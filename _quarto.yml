@@ -5,14 +5,18 @@ project:
     - "!rv/"
 
 website:
-  description: "A blog built with Quarto"
-  site-url: https://your-website-url.example.com # you must change this appropriately for RSS feeds to work properly
-  title: "blog"
+  description: "Statistical modeling and causal inference, with applications in advertising effectiveness measurement."
+  site-url: https://topazape.dev
+  title: "topazape"
   navbar:
     right:
       - about.qmd
       - icon: github
         href: https://github.com/topazape
+      - icon: twitter-x
+        href: https://x.com/topazape
+      - icon: linkedin
+        href: https://bra
 
 format:
   html:
