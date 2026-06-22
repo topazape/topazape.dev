@@ -7,10 +7,9 @@ about:
 
 ---
 
-I'm Tomonori Kawai, a data scientist working in ad division at Japan's largest free ad-supported streaming platform.
+I'm Tomonori Kawai, a data scientist and data engineer at Japan's largest free ad-supported streaming platform. My work spans the full stack, from the statistical models to the production systems that deliver the ads.
 
-I lead the advertising data team. My work spans both sides: building production systems — ad delivery services in Go, data pipelines and monitoring in Python, cloud infrastructure with Terraform, warehouse modeling with dbt on BigQuery — and statistical modeling for ad measurement.
+The core is statistical modeling for ad measurement: Brand Lift Study methodology, causal inference for ad effectiveness, and cross-campaign analysis over individual-level outcome data. Around that, I build forecasting models in Python, the analytics warehouse with dbt on BigQuery, the cloud infrastructure in Terraform, and the ad delivery services in Go.
 
-Before moving into data science, I spent several years in R&D across fragrance chemistry, healthcare, and insurance, after completing a master's in molecular biology at Kobe University. Earlier work is on GitHub.
-
-This blog covers the statistical methods I use and study — causal inference for ad effectiveness, Bayesian modeling, and the mathematical foundations behind them. Most posts include R and Stan code.
+After a master's in molecular biology at Kobe University, I worked in fragrance R&D, healthcare, and insurance before moving into ad-tech.
+This blog covers the statistical methods behind advertising measurement, with working implementations.
