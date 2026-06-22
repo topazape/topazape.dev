@@ -256,9 +256,15 @@ bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
 }
 
 bls_rr_ci(105, 500, 70, 500)
-# $rr              1.500
-# $log_transform   1.138  1.977
-# $naive           1.086  1.914
+
+# $rr
+# [1] 1.5
+#
+# $log_transform
+# [1] 1.138381 1.976491
+#
+# $naive
+# [1] 1.086213 1.913787
 ```
 
 ## SQL (BigQuery)
