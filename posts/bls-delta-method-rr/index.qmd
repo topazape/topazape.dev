@@ -1,6 +1,7 @@
 ---
 title: "Confidence Intervals for Brand Lift: The Delta Method on Risk Ratios"
 draft: true
+draft-mode: unlinked
 date: "2026-07-01"
 categories: ["brand-lift", "statistics"]
 ---
