@@ -1,0 +1,21 @@
+project:
+  type: website
+
+website:
+  description: "A blog built with Quarto"
+  site-url: https://your-website-url.example.com # you must change this appropriately for RSS feeds to work properly
+  title: "blog"
+  navbar:
+    right:
+      - about.qmd
+      - icon: github
+        href: https://github.com/topazape
+
+format:
+  html:
+    theme:
+      - litera
+    css: styles.css
+
+execute:
+  freeze: auto
