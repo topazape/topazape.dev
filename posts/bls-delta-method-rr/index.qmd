@@ -226,21 +226,8 @@ tribble(
 
 ## When the two methods diverge
 
-The log-transform CI and the naive CI give meaningfully different results when:
+The two intervals diverge most when the baseline rate $p_0$ is low. A low $p_0$ means few positive responses in the control group. Because $\hat{p}_0$ sits in the denominator of $\widehat{RR}$, a small downward fluctuation in $\hat{p}_0$ inflates $\widehat{RR}$ far more than an equal upward fluctuation shrinks it. The resulting sampling distribution is right-skewed. The naive CI assumes symmetry; the log-transform CI does not. The log-transform CI is still an asymptotic method. It requires $x_1$ and $x_0$ to be at least moderate — roughly 5 or more. Below that, the stated confidence level is no longer reliable.
 
-- Small control groups.
-
-  BLS campaigns often allocate a small fraction to control (e.g., 5–10% holdout). When $n_0$ is small, the sampling distribution of $\hat{p}_0$ — and hence $\widehat{RR}$ — is highly skewed. The symmetric CI ignores this skewness; the log-transform CI captures it.
-
-- Large $RR$.
-
-  When baseline awareness is low and the campaign has a strong effect, $\widehat{RR}$ can be $1.5$ or higher. The right tail of the distribution stretches further than the left, and the symmetric CI systematically undershoots the upper bound.
-
-- $RR$ near $1$ with small samples.
-
-  The naive lower bound can dip below zero — an impossible value for a risk ratio.
-
-The log-transform CI is still an asymptotic method. It requires $x_1$ and $x_0$ to be at least moderate — roughly 5 or more. Below that, the stated confidence level is no longer reliable.
 
 ## R code
 
