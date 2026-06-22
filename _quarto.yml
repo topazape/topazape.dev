@@ -22,10 +22,10 @@ website:
 format:
   html:
     theme:
-      - litera
+      - flatly
       - custom.scss
-    mainfont: "Inter, sans-serif"
-    monofont: "Fira Code, monospace"
+    mainfont: "Lora, serif"
+    monofont: "Roboto Mono, monospace"
     css: styles.css
 
 execute:
