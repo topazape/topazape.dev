@@ -2,7 +2,7 @@ project:
   type: website
   render:
     - "*.qmd"
-    - "posts/**/*.qmd"
+    - "!rv/"
 
 website:
   description: "A blog built with Quarto"
