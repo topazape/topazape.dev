@@ -52,5 +52,3 @@ rsconnect/
 **/*.quarto_ipynb
 
 /_site/
-
-/rv/library/
