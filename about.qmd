@@ -3,18 +3,14 @@ title: "About"
 image: profile.jpg
 
 about:
-  template: jolla
-  links:
-    - icon: bluesky
-      text: Bluesky
-      href: https://bsky.app/
-    - icon: linkedin
-      text: LinkedIn
-      href: https://linkedin.com
-    - icon: github
-      text: Github
-      href: https://github.com
+  template: broadside
 
 ---
 
-About this blog
+I'm Tomonori Kawai, a data scientist working in ad division at Japan's largest free ad-supported streaming platform.
+
+I lead the advertising data team. My work spans both sides: building production systems — ad delivery services in Go, data pipelines and monitoring in Python, cloud infrastructure with Terraform, warehouse modeling with dbt on BigQuery — and statistical modeling for ad measurement.
+
+Before moving into data science, I spent several years in R&D across fragrance chemistry, healthcare, and insurance, after completing a master's in molecular biology at Kobe University. Earlier work is on GitHub.
+
+This blog covers the statistical methods I use and study — causal inference for ad effectiveness, Bayesian modeling, and the mathematical foundations behind them. Most posts include R and Stan code.

@@ -9,19 +9,23 @@ website:
   site-url: https://topazape.dev
   title: "topazape"
   navbar:
-    right:
+    left:
       - about.qmd
+    right:
       - icon: github
         href: https://github.com/topazape
       - icon: twitter-x
         href: https://x.com/topazape
       - icon: linkedin
-        href: https://bra
+        href: https://www.linkedin.com/in/tomonori-kawai
 
 format:
   html:
     theme:
       - litera
+      - custom.scss
+    mainfont: "Inter, sans-serif"
+    monofont: "Fira Code, monospace"
     css: styles.css
 
 execute:
