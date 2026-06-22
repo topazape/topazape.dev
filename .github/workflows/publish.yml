@@ -39,9 +39,21 @@ jobs:
       - name: Install R packages
         run: rv sync
 
+      - name: Render
+        run: quarto render
+
+      - name: Commit updated _freeze/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add _freeze/
+          git diff --cached --quiet || git commit -m "Update _freeze/ [skip ci]"
+          git push
+
       - name: Render and Publish
         uses: quarto-dev/quarto-actions/publish@v2
         with:
           target: gh-pages
+          render: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
