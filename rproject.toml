@@ -17,4 +17,6 @@ repositories = [
 dependencies = [
     "tidyverse",
     "languageserver",
+    "gt",
+    "katex",
 ]

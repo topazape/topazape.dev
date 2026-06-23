@@ -1,0 +1,355 @@
+---
+title: "How Reliable Is the Delta Method CI? Bootstrap Validation and Sample Size Planning"
+draft: true
+draft-mode: unlinked
+date: "2026-07-15"
+categories: ["brand-lift", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+```
+
+The [previous post](/posts/bls-delta-method-rr/) derived a log-transform delta method CI for the risk ratio $RR = \frac{p_1}{p_0}$:
+
+$$\left( \widehat{RR} \cdot e^{-z_{1-\alpha/2} \cdot SE}, \quad \widehat{RR} \cdot e^{+z_{1-\alpha/2} \cdot SE} \right)$$
+
+where $SE = \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$.
+
+It is closed-form, computable in SQL, and always positive. But it is based on a first-order Taylor approximation. Brand Lift Study (BLS) campaigns run at finite sample sizes, and the baseline rate $p_0$ can be low. How does the interval actually perform?
+
+This post answers that question by simulation. A bootstrap percentile CI serves as the comparison method: it does not depend on the normal approximation that the delta method requires. Both are evaluated by coverage, the proportion of simulated datasets where the CI contains the true $RR$.
+
+The short version: when the expected number of positive control responses $\mathbb{E}[x_0] = n \cdot p_0$ is 20 or more, the delta method CI achieves its nominal 95% coverage. Below that, it becomes conservative, producing intervals wider than the stated level implies. The second half of the post inverts the variance formula to get the minimum per-group sample size $n_{\min}$ for a target CI precision.
+
+Throughout, $n_1 = n_0 = n$, for simplicity.
+
+## Bootstrap percentile CI for RR
+
+The bootstrap percentile CI does not require the normal approximation underlying the delta method. It is a parametric bootstrap: resample from the estimated binomial distributions and take quantiles.
+
+Given observed counts $(x_1, n, x_0, n)$:
+
+1.  Compute $\hat{p}_1 = \frac{x_1}{n}$ and $\hat{p}_0 = \frac{x_0}{n}$.
+2.  For $b = 1, \dots, B$: draw $x_1^* \sim \text{Binomial}(n, \hat{p}_1)$ and $x_0^* \sim \text{Binomial}(n, \hat{p}_0)$ independently. If $x_0^* = 0$, discard the replicate ($\widehat{RR}^*$ is undefined). Otherwise compute $\widehat{RR}^*_b = (x_1^*/n) / (x_0^*/n)$.
+3.  The $(1-\alpha)$ CI is $\left( \widehat{RR}^*_{(\alpha/2)}, \; \widehat{RR}^*_{(1-\alpha/2)} \right)$.
+
+## Coverage simulation
+
+### Why fix RR?
+
+The simulation varies $p_0$ and $n$ but holds $RR$ fixed. Here is why.
+
+$\log(\widehat{RR}) = \log(\hat{p}_1) - \log(\hat{p}_0)$, and the two terms are independent. The normal approximation to their difference is only as good as the worse of the two individual approximations.
+
+The delta method approximation to $\log(\hat{p})$ depends on the expected count $np = \mathbb{E}[x]$. Large $np$ means $\hat{p}$ is approximately normal and $\log(\hat{p})$ inherits that normality. Small $np$ means $\hat{p}$ is discrete and right-skewed, and the approximation breaks down.
+
+With $n_1 = n_0 = n$ and $RR > 1$, $p_1 = RR \cdot p_0 > p_0$, so $np_1 > np_0$ always. The exposed group always has more expected positive responses than control. The approximation to $\log(\hat{p}_0)$ is always the weaker link.
+
+The accuracy of $\log(\hat{p}_0)$'s approximation depends on $np_0$ alone. $RR$ affects $p_1$ but not $p_0$. Changing $RR$ does not shift the threshold where the delta method starts to deviate.
+
+The main simulation uses $RR = 1.20$, a moderate lift typical of BLS campaigns (I think). One confirmation condition at $RR = 1.50$ checks the $RR$-independence numerically.
+
+### Design
+
+The key quantity is $\mathbb{E}[x_0] = n \cdot p_0$. The grid varies both $p_0$ and $n$ to generate a range of $\mathbb{E}[x_0]$ values.
+
+| Parameter            | Values                                  |
+|----------------------|-----------------------------------------|
+| $RR$                 | $1.20$ (primary), $1.50$ (confirmation) |
+| $p_0$                | $0.02, \; 0.05, \; 0.10, \; 0.20$       |
+| $n \; (= n_1 = n_0)$ | $100, \; 500, \; 2{,}000$               |
+| Replications         | $K = 10{,}000$                          |
+| Confidence level     | $95\%$                                  |
+
+Four $p_0$ values span BLS baseline rates at half-log spacing. Three $n$ values produce 12 conditions with 10 unique $\mathbb{E}[x_0]$ from 2 to 400:
+
+|              | $n = 100$ | $n = 500$ | $n = 2{,}000$ |
+|--------------|-----------|-----------|---------------|
+| $p_0 = 0.02$ | 2         | 10        | 40            |
+| $p_0 = 0.05$ | 5         | 25        | 100           |
+| $p_0 = 0.10$ | 10        | 50        | 200           |
+| $p_0 = 0.20$ | 20        | 100       | 400           |
+
+Two pairs share the same $\mathbb{E}[x_0]$: $\mathbb{E}[x_0] = 10$ from $(0.02,\, 500)$ and $(0.10,\, 100)$; $\mathbb{E}[x_0] = 100$ from $(0.05,\, 2{,}000)$ and $(0.20,\, 500)$. These test whether $\mathbb{E}[x_0]$ alone determines coverage.
+
+Each replication draws $x_1 \sim \text{Binomial}(n, p_1)$ and $x_0 \sim \text{Binomial}(n, p_0)$ from the true parameters, computes both CIs, and records whether each contains the true $RR$. Replications where either count is zero are skipped.
+
+### Results
+
+```{r}
+#| label: sim-functions
+#| include: false
+
+bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  rr <- p1 / p0
+  se_log <- sqrt(1 / x1 - 1 / n1 + 1 / x0 - 1 / n0)
+  z <- qnorm(1 - alpha / 2)
+  exp(log(rr) + c(-1, 1) * z * se_log)
+}
+
+bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 5000, alpha = 0.05) {
+  p1_hat <- x1 / n1
+  p0_hat <- x0 / n0
+  x1_star <- rbinom(B, n1, p1_hat)
+  x0_star <- rbinom(B, n0, p0_hat)
+  
+  valid <- x0_star > 0 & x1_star > 0
+  if (sum(valid) < 100) {
+    return(c(NA, NA))
+  }
+  
+  rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
+  
+  quantile(rr_star, c(alpha / 2, 1 - alpha / 2), names = FALSE)
+}
+
+coverage_sim <- function(p0, rr, n, K = 10000, B = 5000, alpha = 0.05) {
+  p1 <- rr * p0
+  true_rr <- rr
+  
+  dm_cover <- 0L
+  bs_cover <- 0L
+  valid_dm <- 0L
+  valid_bs <- 0L
+  
+  for (k in seq_len(K)) {
+    x1 <- rbinom(1, n, p1)
+    x0 <- rbinom(1, n, p0)
+    
+    if (x1 == 0 || x0 == 0) {
+      next
+    }
+    
+    dm_ci <- bls_rr_ci(x1, n, x0, n, alpha)
+    valid_dm <- valid_dm + 1L
+    dm_cover <- dm_cover + (dm_ci[1] <= true_rr & true_rr <= dm_ci[2])
+    
+    bs_ci <- bls_bootstrap_ci(x1, n, x0, n, B, alpha)
+    if (!anyNA(bs_ci)) {
+      valid_bs <- valid_bs + 1L
+      bs_cover <- bs_cover + (bs_ci[1] <= true_rr & true_rr <= bs_ci[2])
+    }
+  }
+  
+  tibble(
+    p0 = p0,
+    rr = rr,
+    n = n,
+    ex0 = n * p0,
+    dm_coverage = dm_cover / valid_dm,
+    bs_coverage = bs_cover / valid_bs,
+    valid_dm = valid_dm,
+    valid_bs = valid_bs
+  )
+}
+```
+
+```{r}
+#| label: run-sim
+#| include: false
+#| cache: true
+
+set.seed(2026)
+
+grid <- crossing(
+  p0 = c(0.02, 0.05, 0.10, 0.20),
+  n = c(100, 500, 2000),
+  rr = c(1.20, 1.50)
+) |>
+  filter(rr == 1.20 | (p0 == 0.05 & n == 100))
+
+results <- grid |>
+  pmap_dfr(
+    \(p0, n, rr) coverage_sim(p0, rr, n)
+  ) |>
+  arrange(ex0)
+```
+
+```{r}
+#| label: tbl-coverage
+#| tbl-cap: "Coverage of 95% CIs by condition. Both methods evaluated against the true $RR$ over $K = 10,000$ replications."
+#| echo: false
+#| message: false
+
+results |>
+  select(p0, n, rr, ex0, dm_coverage, bs_coverage) |>
+  gt::gt() |>
+  gt::fmt_number(columns = c(p0, rr), decimals = 2) |>
+  gt::fmt_integer(columns = c(n, ex0)) |>
+  gt::fmt_percent(columns = c(dm_coverage, bs_coverage), decimals = 1) |>
+  gt::cols_label(
+    p0 = gt::md("$p_0$"),
+    n  = gt::md("$n$"),
+    rr = gt::md("$RR$"),
+    ex0 = gt::md("$\\mathbb{E}[x_0]$"),
+    dm_coverage = "Delta method",
+    bs_coverage = "Bootstrap"
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+```{r}
+#| label: fig-coverage
+#| fig-cap: "Coverage of 95% CIs as a function of $E[x_0]$. Dashed line: nominal 95%. Both methods overcover when $E[x_0]$ is small; the delta method more so."
+#| echo: false
+#| message: false
+
+results |>
+  filter(rr == 1.20) |>
+  select(ex0, `Delta method` = dm_coverage, Bootstrap = bs_coverage) |>
+  pivot_longer(-ex0, names_to = "method", values_to = "coverage") |>
+  mutate(method = fct_inorder(method)) |>
+  ggplot(aes(x = ex0, y = coverage, colour = method, shape = method)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_point(size = 2.5) +
+  geom_line() +
+  scale_x_log10(breaks = c(2, 5, 10, 20, 50, 100, 200, 400)) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1),
+    limits = c(0.93, 1.0)
+  ) +
+  labs(x = expression(E(x[0])), y = "Coverage", colour = NULL, shape = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top")
+```
+
+@fig-coverage and @tbl-coverage tell a clear story.
+
+Large $\mathbb{E}[x_0]$: the methods agree. At $\mathbb{E}[x_0] \geq 50$, both methods land within about one percentage point of 95%. The delta method CI works as advertised.
+
+Small $\mathbb{E}[x_0]$: the delta method overcovers. Below $\mathbb{E}[x_0] \approx 20$, coverage climbs above 95% for both methods, with the delta method rising faster. At $\mathbb{E}[x_0] = 5$, delta method coverage is around 97.5%. At $\mathbb{E}[x_0] = 2$, it exceeds 99%.
+
+The mechanism is the $\frac{1}{x_0}$ term in $SE = \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$. When $x_0$ is 1, 2, or 3, this term dominates and inflates the SE, producing intervals far wider than the stated level implies. The CI is still valid (it covers at least 95% of the time) but conservative: the stated 95% does not reflect the actual coverage.
+
+RR-independence confirmed. At $\mathbb{E}[x_0] = 5$, the $RR = 1.50$ confirmation condition produces coverage nearly identical to $RR = 1.20$, as predicted.
+
+$\mathbb{E}[x_0]$ sufficiency. The duplicate pairs ($\mathbb{E}[x_0] = 10$ and $100$, each from two different $(p_0, n)$ combinations) show coverage differences under one percentage point. $\mathbb{E}[x_0]$ is the primary driver.
+
+## Minimum sample size
+
+The delta method CI is reliable when $\mathbb{E}[x_0]$ is large enough. The practical question: how many respondents per group does a study need?
+
+### Precision on the log scale
+
+Define the CI half-width on the log scale as $\delta$:
+
+$$\delta = z_{1-\alpha/2} \cdot SE = z_{1-\alpha/2} \sqrt{\frac{1-p_1}{n \, p_1} + \frac{1-p_0}{n \, p_0}}$$
+
+The log-transform CI is $\log(\widehat{RR}) \pm \delta$. Exponentiating, the upper bound is $\widehat{RR} \cdot e^{\delta}$ and the lower bound is $\widehat{RR} \cdot e^{-\delta}$. Their ratio:
+
+$$\frac{\text{CI upper}}{\text{CI lower}} = e^{2\delta}$$
+
+This ratio is independent of $\widehat{RR}$. At $\delta = 0.20$, the upper bound is at most $e^{0.40} \approx 1.49$ times the lower bound. At $\delta = 0.10$, the ratio is $e^{0.20} \approx 1.22$.
+
+### Derivation of $n_{\min}$
+
+Set $n_1 = n_0 = n$ and require $\delta$ not to exceed a target:
+
+$$z_{1-\alpha/2} \sqrt{\frac{1-p_1}{n \, p_1} + \frac{1-p_0}{n \, p_0}} \leq \delta$$
+
+Square both sides and solve for $n$:
+
+$$n_{\min} = \left\lceil \frac{z_{1-\alpha/2}^2}{\delta^2}\left[\frac{1-p_1}{p_1} + \frac{1-p_0}{p_0}\right] \right\rceil$$
+
+Since $p_1 = RR \cdot p_0$, the formula takes four inputs: $p_0$, $RR$, $\delta$, and $\alpha$. This formula is valid when $n_{\min} \cdot p_0 \ge 20$, the threshold established by the coverage simulation above.
+
+### Worked example
+
+Planning inputs from historical study norms: $p_0 = 0.10$, $RR = 1.20$ (20% relative lift). Target precision: $\delta = 0.20$ at $\alpha = 0.05$. Then $p_1 = 0.12$ and:
+
+$$n_{\min} = \left\lceil \frac{1.96^2}{0.20^2}\left[\frac{1-0.12}{0.12} + \frac{1-0.10}{0.10}\right] \right\rceil = \left\lceil 96.04 \times 16.333 \right\rceil = 1{,}569$$
+
+At $\delta = 0.20$ the CI upper bound is at most $1.49\times$ the lower bound.
+
+$p_0$ and $RR$ are planning assumptions, typically from historical norms for the relevant study category. If the actual values deviate, the realized CI precision will differ from $\delta$.
+
+### $n_{\min}$ reference table
+
+```{r}
+#| label: fun-nmin
+#| include: false
+
+bls_nmin <- function(p0, rr, delta, alpha = 0.05) {
+  p1 <- rr * p0
+  z <- qnorm(1 - alpha / 2)
+  n <- ceiling(z^2 / delta^2 * ((1 - p1) / p1 + (1 - p0) / p0))
+  threshold <- 20
+  n_floor <- ceiling(threshold / p0)
+  max(n, n_floor)
+}
+```
+
+```{r}
+#| label: tbl-nmin
+#| tbl-cap: "Minimum respondents per group ($n_{\\min}$) at $\\delta = 0.20, \\alpha = 0.05$. The CI upper bound is at most $1.49\\times$ the lower bound."
+#| echo: false
+#| message: false
+
+nmin_grid <- crossing(
+  p0 = c(0.05, 0.10, 0.20),
+  rr = c(1.10, 1.20, 1.50)
+) |>
+  mutate(n_min = map2_int(p0, rr, \(p0, rr) bls_nmin(p0, rr, delta = 0.20)))
+
+nmin_grid |>
+  gt::gt() |>
+  gt::fmt_number(columns = p0, decimals = 2) |>
+  gt::fmt_number(columns = rr, decimals = 2) |>
+  gt::fmt_integer(columns = n_min) |>
+  gt::cols_label(
+    p0 = gt::md("$p_0$"),
+    rr = gt::md("$RR$"),
+    n_min = gt::md("$n_{\\min}$")
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+## R code
+
+``` r
+bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  rr <- p1 / p0
+
+  se_log <- sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  z <- qnorm(1 - alpha / 2)
+  exp(log(rr) + c(-1, 1) * z * se_log)
+}
+
+bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 10000, alpha = 0.05) {
+  p1_hat <- x1 / n1
+  p0_hat <- x0 / n0
+  x1_star <- rbinom(B, n1, p1_hat)
+  x0_star <- rbinom(B, n0, p0_hat)
+
+  valid <- x0_star > 0 & x1_star > 0
+  rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
+  quantile(rr_star, c(alpha / 2, 1 - alpha / 2))
+}
+
+bls_nmin <- function(p0, rr, delta, alpha = 0.05) {
+  p1 <- rr * p0
+  z <- qnorm(1 - alpha / 2)
+  n <- ceiling(z^2 / delta^2 * ((1 - p1) / p1 + (1 - p0) / p0))
+
+  max(n, ceiling(20 / p0))
+}
+
+bls_rr_ci(105, 500, 70, 500)
+# [1] 1.138381 1.976491
+
+bls_bootstrap_ci(105, 500, 70, 500)
+# 2.5% 97.5% 
+# 1.15  2.00
+
+bls_nmin(p0 = 0.10, rr = 1.20, delta = 0.20)
+# [1] 1569
+```
