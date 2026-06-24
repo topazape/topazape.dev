@@ -22,7 +22,7 @@ It is closed-form, computable in SQL, and always positive. But it is based on a 
 
 This post answers that question by simulation. A bootstrap percentile CI serves as the comparison method: it does not depend on the normal approximation that the delta method requires. Both are evaluated by coverage, the proportion of simulated datasets where the CI contains the true $RR$.
 
-The short version: when the expected number of positive control responses $\mathbb{E}[x_0] = n \cdot p_0$ is 20 or more, the delta method CI achieves its nominal 95% coverage. Below that, it becomes conservative, producing intervals wider than the stated level implies. The second half of the post inverts the variance formula to get the minimum per-group sample size $n_{\min}$ for a target CI precision.
+The short version: when the expected number of positive control responses $\mathbb{E}[x_0] = n \cdot p_0$ is 20 or more, the delta method CI achieves its nominal 95% coverage. Below that, it becomes conservative, producing intervals wider than the stated level implies. The second half of the post derives the minimum per-group sample size $n_{\min}$ required to detect a given lift with a target power.
 
 Throughout, $n_1 = n_0 = n$, for simplicity.
 
@@ -233,41 +233,42 @@ $\mathbb{E}[x_0]$ sufficiency. The duplicate pairs ($\mathbb{E}[x_0] = 10$ and $
 
 ## Minimum sample size
 
-The delta method CI is reliable when $\mathbb{E}[x_0]$ is large enough. The practical question: how many respondents per group does a study need?
+The delta method CI is reliable when $\mathbb{E}[x_0]$ is large enough. The practical question: how many respondents per group does a study need to detect a given lift?
 
-### Precision on the log scale
+### From CI to power
 
-Define the CI half-width on the log scale as $\delta$:
+A lift is detected when the CI lower bound exceeds 1. On the log scale:
 
-$$\delta = z_{1-\alpha/2} \cdot SE = z_{1-\alpha/2} \sqrt{\frac{1-p_1}{n \, p_1} + \frac{1-p_0}{n \, p_0}}$$
+$$\log(\widehat{RR}) - z_{1-\alpha/2} \cdot SE > 0$$
 
-The log-transform CI is $\log(\widehat{RR}) \pm \delta$. Exponentiating, the upper bound is $\widehat{RR} \cdot e^{\delta}$ and the lower bound is $\widehat{RR} \cdot e^{-\delta}$. Their ratio:
+Under the true $RR$, $\log(\widehat{RR}) \sim N(\log(RR), \; SE^2)$ approximately. Power is the probability of detection:
 
-$$\frac{\text{CI upper}}{\text{CI lower}} = e^{2\delta}$$
+$$\text{Power} = P\!\left(\log(\widehat{RR}) > z_{1-\alpha/2} \cdot SE\right) = \Phi\!\left(\frac{\log(RR)}{SE} - z_{1-\alpha/2}\right)$$
 
-This ratio is independent of $\widehat{RR}$. At $\delta = 0.20$, the upper bound is at most $e^{0.40} \approx 1.49$ times the lower bound. At $\delta = 0.10$, the ratio is $e^{0.20} \approx 1.22$.
+Setting power to $1 - \beta$ and solving:
+
+$$\frac{\log(RR)}{SE} = z_{1-\alpha/2} + z_{1-\beta}$$
+
 
 ### Derivation of $n_{\min}$
 
-Set $n_1 = n_0 = n$ and require $\delta$ not to exceed a target:
+Set $n_1 = n_0 = n$. From $\log(RR) = (z_{1-\alpha/2} + z_{1-\beta}) \cdot SE$ and $SE^2 = \frac{1-p_1}{n\,p_1} + \frac{1-p_0}{n\,p_0}$, solve for $n$:
 
-$$z_{1-\alpha/2} \sqrt{\frac{1-p_1}{n \, p_1} + \frac{1-p_0}{n \, p_0}} \leq \delta$$
+$$n_{\min} = \left\lceil \frac{(z_{1-\alpha/2} + z_{1-\beta})^2}{[\log(RR)]^2}\left[\frac{1-p_1}{p_1} + \frac{1-p_0}{p_0}\right] \right\rceil$$
 
-Square both sides and solve for $n$:
+Since $p_1 = RR \cdot p_0$, the formula takes four inputs: $p_0$, $RR$, $\alpha$, and power ($1-\beta$).
 
-$$n_{\min} = \left\lceil \frac{z_{1-\alpha/2}^2}{\delta^2}\left[\frac{1-p_1}{p_1} + \frac{1-p_0}{p_0}\right] \right\rceil$$
-
-Since $p_1 = RR \cdot p_0$, the formula takes four inputs: $p_0$, $RR$, $\delta$, and $\alpha$. This formula is valid when $n_{\min} \cdot p_0 \ge 20$, the threshold established by the coverage simulation above.
 
 ### Worked example
 
-Planning inputs from historical study norms: $p_0 = 0.10$, $RR = 1.20$ (20% relative lift). Target precision: $\delta = 0.20$ at $\alpha = 0.05$. Then $p_1 = 0.12$ and:
+Planning inputs from historical study norms: $p_0 = 0.10$, $RR = 1.20$ (20% relative lift). Target: 80% power at $\alpha = 0.05$. Then $p_1 = 0.12$, $z_{0.975} = 1.96$, $z_{0.80} = 0.842$, and:
 
-$$n_{\min} = \left\lceil \frac{1.96^2}{0.20^2}\left[\frac{1-0.12}{0.12} + \frac{1-0.10}{0.10}\right] \right\rceil = \left\lceil 96.04 \times 16.333 \right\rceil = 1{,}569$$
+$$n_{\min} = \left\lceil \frac{(1.96 + 0.842)^2}{[\log(1.20)]^2}\left[\frac{1-0.12}{0.12} + \frac{1-0.10}{0.10}\right] \right\rceil = \left\lceil \frac{7.849}{0.03324} \times 16.333 \right\rceil = \left\lceil 236.1 \times 16.333 \right\rceil = 3{,}857$$
 
-At $\delta = 0.20$ the CI upper bound is at most $1.49\times$ the lower bound.
+At 80% power, the study needs approximately 3,900 respondents per group to detect a 20% relative lift.
 
-$p_0$ and $RR$ are planning assumptions, typically from historical norms for the relevant study category. If the actual values deviate, the realized CI precision will differ from $\delta$.
+$p_0$ and $RR$ are planning assumptions, typically from historical norms; if the actual values deviate, the realized power will differ.
+
 
 ### $n_{\min}$ reference table
 
@@ -275,19 +276,20 @@ $p_0$ and $RR$ are planning assumptions, typically from historical norms for the
 #| label: fun-nmin
 #| include: false
 
-bls_nmin <- function(p0, rr, delta, alpha = 0.05) {
+bls_nmin <- function(p0, rr, alpha = 0.05, power = 0.80) {
   p1 <- rr * p0
-  z <- qnorm(1 - alpha / 2)
-  n <- ceiling(z^2 / delta^2 * ((1 - p1) / p1 + (1 - p0) / p0))
-  threshold <- 20
-  n_floor <- ceiling(threshold / p0)
-  max(n, n_floor)
+  z_alpha <- qnorm(1 - alpha / 2)
+  z_beta <- qnorm(power)
+  ceiling(
+    (z_alpha + z_beta)^2 / log(rr)^2
+    * ((1 - p1) / p1 + (1 - p0) / p0)
+  )
 }
 ```
 
 ```{r}
 #| label: tbl-nmin
-#| tbl-cap: "Minimum respondents per group ($n_{\\min}$) at $\\delta = 0.20, \\alpha = 0.05$. The CI upper bound is at most $1.49\\times$ the lower bound."
+#| tbl-cap: "Minimum respondents per group ($n_{\\min}$) to detect lift with 80% power at $\\alpha = 0.05$."
 #| echo: false
 #| message: false
 
@@ -295,7 +297,7 @@ nmin_grid <- crossing(
   p0 = c(0.05, 0.10, 0.20),
   rr = c(1.10, 1.20, 1.50)
 ) |>
-  mutate(n_min = map2_int(p0, rr, \(p0, rr) bls_nmin(p0, rr, delta = 0.20)))
+  mutate(n_min = map2_int(p0, rr, \(p0, rr) bls_nmin(p0, rr)))
 
 nmin_grid |>
   gt::gt() |>
@@ -310,6 +312,7 @@ nmin_grid |>
   gt::cols_align(align = "right") |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
+
 
 ## R code
 
@@ -330,26 +333,29 @@ bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 10000, alpha = 0.05) {
   x1_star <- rbinom(B, n1, p1_hat)
   x0_star <- rbinom(B, n0, p0_hat)
 
+  # Discard replicates where x0* = 0 (RR undefined)
   valid <- x0_star > 0 & x1_star > 0
   rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
   quantile(rr_star, c(alpha / 2, 1 - alpha / 2))
 }
 
-bls_nmin <- function(p0, rr, delta, alpha = 0.05) {
+bls_nmin <- function(p0, rr, alpha = 0.05, power = 0.80) {
   p1 <- rr * p0
-  z <- qnorm(1 - alpha / 2)
-  n <- ceiling(z^2 / delta^2 * ((1 - p1) / p1 + (1 - p0) / p0))
-
-  max(n, ceiling(20 / p0))
+  z_alpha <- qnorm(1 - alpha / 2)
+  z_beta <- qnorm(power)
+  ceiling(
+    (z_alpha + z_beta)^2 / log(rr)^2
+    * ((1 - p1) / p1 + (1 - p0) / p0)
+  )
 }
 
 bls_rr_ci(105, 500, 70, 500)
 # [1] 1.138381 1.976491
 
 bls_bootstrap_ci(105, 500, 70, 500)
-# 2.5% 97.5% 
-# 1.15  2.00
+#     2.5%    97.5%
+# 1.146667 1.984854
 
-bls_nmin(p0 = 0.10, rr = 1.20, delta = 0.20)
-# [1] 1569
+bls_nmin(p0 = 0.10, rr = 1.20)
+# [1] 3857
 ```
