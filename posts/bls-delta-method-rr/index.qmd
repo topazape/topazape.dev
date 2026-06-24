@@ -261,7 +261,7 @@ The same computation in SQL, no UDFs needed. If BLS results are already aggregat
 ``` sql
 with bls as (
   select
-    campaign_id,
+    study_id,
     x1,  -- exposed positive count
     n1,  -- exposed total
     x0,  -- control positive count
@@ -270,7 +270,7 @@ with bls as (
 )
 
 select
-  campaign_id,
+  study_id,
   (x1 / n1) / (x0 / n0) as rr,
   exp(
     ln((x1 / n1) / (x0 / n0))
