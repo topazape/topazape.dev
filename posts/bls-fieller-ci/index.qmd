@@ -2,7 +2,7 @@
 title: "Fieller's Confidence Interval for Risk Ratios: Removing the Taylor Approximation"
 draft: true
 draft-mode: unlinked
-date: "2026-08-01"
+date: "2026-07-29"
 categories: ["brand-lift", "statistics"]
 ---
 
@@ -14,7 +14,7 @@ library(tidyverse)
 
 The [previous post](/posts/bls-bootstrap-validation/) showed that the log-transform delta method CI for $RR$ achieves its nominal 95% coverage when the expected number of positive control responses $\mathbb{E}[x_0] = n \cdot p_0$ is 20 or more. Below that, the delta method becomes conservative: the $\frac{1}{x_0}$ term in the SE formula inflates the interval beyond what the stated confidence level implies. The bootstrap percentile CI, which does not depend on the Taylor approximation, maintained near-nominal coverage across the full range.
 
-If the bootstrap works everywhere, why not use it for everything? The bootstrap is not closed-form: it requires a simulation loop for each study, which rules out SQL implementation and adds computational cost in batch pipelines. It also does not produce a variance formula, which is needed for sample size calculations and meta-analytic weighting. This post introduces a third method, Fieller's confidence interval (Fieller 1954), that removes the Taylor approximation while remaining closed-form and SQL-compatible.
+If the bootstrap works everywhere, why not use it for everything? The bootstrap is not closed-form: it requires a simulation loop for each study, which rules out SQL implementation and adds computational cost in batch pipelines. It also does not produce a closed-form variance formula, which is needed for sample size calculations and meta-analytic weighting. This post introduces a third method, Fieller's confidence interval (Fieller 1954), that removes the Taylor approximation while remaining closed-form and SQL-compatible.
 
 Throughout, $n_1 = n_0 = n$.
 
@@ -33,13 +33,7 @@ Before deriving Fieller's CI, it is worth comparing what each method provides. T
 | Insufficient data signal | None (always returns a finite CI) | Returns unbounded CI | None (always returns a finite CI) |
 | Closed-form variance for downstream use | Yes    | No                             | No                      |
 
-The delta method is the only method that produces a closed-form variance formula. The [first post](/posts/bls-delta-method-rr/) derived $\text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$, and the [second post](/posts/bls-bootstrap-validation/) used it to solve for $n_{\min}$ by inverting the power equation. Meta-analysis weights each study by $w_k = 1/\text{Var}(\log(\widehat{RR}_k))$, again requiring the same formula. The bootstrap can estimate a variance numerically ($\text{Var}(\log(\widehat{RR}^*))$ across replicates), but this estimate cannot be inverted to solve for $n$ and is not available in SQL. Fieller returns a CI but no variance at all.
-
-BLS platforms compute CIs for hundreds of studies in batch SQL pipelines. The delta method and Fieller both reduce to arithmetic expressions: `SQRT`, `LN`, and `POW` in BigQuery. The bootstrap requires generating $B$ random draws per study, sorting them, and extracting quantiles. This is feasible in R or Python batch jobs but does not fit into a single SQL query.
-
-Fieller's CI can return an unbounded interval when the data are insufficient to localize $RR$. This happens when the control group's positive count is too small for the positive rate to be distinguished from zero. The delta method and the bootstrap always return finite intervals in the same situation, but the delta method CI is far wider than its stated level implies, and the bootstrap CI's coverage degrades. Fieller's unbounded result is a structural signal: there is not enough data to construct a meaningful CI.
-
-The three methods are complementary. When $\mathbb{E}[x_0] \geq 20$, all three produce nearly identical intervals and the delta method suffices for all purposes. The choice matters only below that threshold.
+The key differentiator is the closed-form variance formula. The [first post](/posts/bls-delta-method-rr/) derived $\text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$, and the [second post](/posts/bls-bootstrap-validation/) inverted it to solve for $n_{\min}$. Meta-analysis weights each study by $w_k = 1/\text{Var}(\log(\widehat{RR}_k))$. Only the delta method provides this formula as an algebraic expression in terms of cell counts; the bootstrap can estimate a variance numerically but cannot express it as a function of $n$ to invert, and Fieller returns no variance at all. For a broader treatment of confidence intervals for ratios, including the geometric interpretation of Fieller's theorem, see [Franz (2007)](https://arxiv.org/abs/0710.2024). The three methods are complementary. When $\mathbb{E}[x_0] \geq 20$, all three produce nearly identical CIs and the delta method suffices for all purposes. The choice matters only below that threshold.
 
 
 ## Fieller's theorem
@@ -76,19 +70,19 @@ When $a > 0$ and the discriminant $D = b^2 - ac$ is positive, the quadratic has 
 
 $$\text{CI}_{\text{Fieller}} = \left[\frac{b - \sqrt{D}}{a}, \; \frac{b + \sqrt{D}}{a}\right]$$
 
-No Taylor expansion appears anywhere in this derivation. The only approximation is the CLT: $\hat{p}_1$ and $\hat{p}_0$ are treated as normally distributed, same as in the delta method. The difference is that the ratio's distribution is handled by algebra (a quadratic equation) rather than by linear approximation.
+No Taylor expansion appears anywhere in this derivation. The only approximation is the CLT: $\hat{p}_1$ and $\hat{p}_0$ are treated as normally distributed, same as in the delta method. Instead of linearizing the ratio, Fieller solves a quadratic equation.
 
 ### Bounded condition
 
-The CI is bounded if and only if $a > 0$. Expanding:
+The CI is bounded when $a > 0$. (In principle, $D \geq 0$ is also required, but this holds whenever both sample proportions are positive.) Expanding:
 
 $$\hat{p}_0^2 > z^2 \frac{\hat{p}_0(1 - \hat{p}_0)}{n} \quad \Longleftrightarrow \quad n \hat{p}_0 > z^2(1 - \hat{p}_0) \quad \Longleftrightarrow \quad x_0 > z^2(1 - \hat{p}_0)$$
 
 For a 95% CI ($z^2 = 3.84$) and small $\hat{p}_0$, this reduces to approximately $x_0 \geq 4$.
 
-When $a \leq 0$, the control group's positive rate is not significantly different from zero at level $\alpha$. The quadratic opens downward, and the set of non-rejected $\theta$ values is unbounded: the data cannot localize $RR$ to a finite interval. In BLS terms, the study collected too few positive control responses to say anything useful about relative lift. The correct response is to flag the study as underpowered, not to report a CI.
+When $a \leq 0$, the control group has too few positive responses to distinguish its rate from zero. The CI becomes unbounded because the data cannot pin down $RR$. Avoid reporting a CI; flag the study as underpowered.
 
-The delta method never signals this problem. It returns a finite CI for any $x_0 \geq 1$, regardless of whether the data support it. Article 2 showed the consequence: at $\mathbb{E}[x_0] = 2$, delta method coverage exceeds 99%, meaning the interval is far wider than a 95% CI should be.
+The delta method does not signal this problem. It returns a finite CI for any $x_0 \geq 1$, regardless of whether the data support it. The [previous post](/posts/bls-bootstrap-validation/) showed the consequence: at $\mathbb{E}[x_0] = 2$, delta method coverage exceeds 99%, meaning the interval is far wider than a 95% CI should be.
 
 ### Asymptotic equivalence to the delta method
 
@@ -106,7 +100,7 @@ Substituting $V_1 = \hat{p}_1(1-\hat{p}_1)/n$ and $V_0 = \hat{p}_0(1-\hat{p}_0)/
 
 $$= \widehat{RR} \pm z\sqrt{\widehat{RR}^2 \left[\frac{1-\hat{p}_1}{n\hat{p}_1} + \frac{1-\hat{p}_0}{n\hat{p}_0}\right]}$$
 
-The expression under the square root is $\text{Var}(\widehat{RR})$ from the [first post](/posts/bls-delta-method-rr/). For large $n$, Fieller's CI coincides with the naive symmetric delta method CI. The log-transform CI from that post also converges to the same interval, since both are first-order approximations. The practical implication: when $\mathbb{E}[x_0]$ is large enough, there is no reason to use Fieller over the delta method.
+The expression under the square root is $\text{Var}(\widehat{RR})$ from the [first post](/posts/bls-delta-method-rr/). For large $n$, Fieller's CI coincides with the naive symmetric delta method CI. The log-transform CI from that post also converges to the same interval, since both are first-order approximations. The practical implication: when $\mathbb{E}[x_0]$ is large enough, Fieller offers no advantage over the delta method.
 
 
 ## Worked example
@@ -292,7 +286,6 @@ coverage_sim <- function(p0, rr, n, K = 10000, B = 5000, alpha = 0.05) {
 #| label: run-sim
 #| include: false
 #| cache: true
-#| dependson: sim-functions
 
 set.seed(2026)
 
@@ -352,7 +345,7 @@ cov_long <- results |>
   pivot_longer(-ex0, names_to = "method", values_to = "coverage") |>
   mutate(method = factor(method, levels = c("Delta method", "Fieller", "Bootstrap")))
 
-ggplot(cov_long, aes(x = ex0, y = coverage, color = method, shape = method)) +
+ggplot(cov_long, aes(x = ex0, y = coverage, colour = method, shape = method)) +
   geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
   geom_point(size = 2.5) +
   geom_line(
@@ -371,13 +364,13 @@ ggplot(cov_long, aes(x = ex0, y = coverage, color = method, shape = method)) +
 
 @fig-coverage and @tbl-coverage extend the picture from the previous post.
 
-Large $\mathbb{E}[x_0]$: all three methods agree. At $\mathbb{E}[x_0] \geq 50$, all three land within about one percentage point of 95%. The choice of method does not matter.
+Large $\mathbb{E}[x_0]$: all three methods agree. At $\mathbb{E}[x_0] \geq 50$, all three land within about one percentage point of 95%. The choice of method has little practical effect.
 
 Small $\mathbb{E}[x_0]$: the picture splits. At $\mathbb{E}[x_0] = 10$, where unbounded rates are around 1%, Fieller's coverage is closer to 95% than the delta method's. The improvement comes from removing the Taylor layer: Fieller does not inflate the SE through the $\frac{1}{x_0}$ term because it does not compute an SE at all.
 
-At $\mathbb{E}[x_0] = 5$, Fieller's coverage exceeds the delta method's. This is not an improvement: 25% of Fieller CIs are unbounded, and counting them as covering inflates the unconditional coverage. The useful output here is not the coverage number but the unbounded rate itself, which flags that one in four studies at this expected count cannot produce a meaningful CI.
+At $\mathbb{E}[x_0] = 5$, Fieller's coverage exceeds the delta method's. This reflects the unbounded CIs, not better accuracy: 25% of Fieller CIs are unbounded, and counting them as covering inflates the unconditional coverage. The useful output here is not the coverage number but the unbounded rate itself, which flags that one in four studies at this expected count cannot produce a meaningful CI.
 
-Very small $\mathbb{E}[x_0]$: CLT limits all methods. At $\mathbb{E}[x_0] = 2$, the normal approximation to $\hat{p}_0$ itself is poor. Fieller returns an unbounded CI in 85% of replications, which is the honest answer: the data cannot support a finite interval. The delta method's 99.9% coverage at $\mathbb{E}[x_0] = 2$ is not a sign of reliability but of an interval too wide to be informative.
+Very small $\mathbb{E}[x_0]$: CLT limits all methods. At $\mathbb{E}[x_0] = 2$, the normal approximation to $\hat{p}_0$ itself is poor. Fieller returns an unbounded CI in 85% of replications, reflecting that the data cannot support a finite interval. The delta method's 99.9% coverage at $\mathbb{E}[x_0] = 2$ indicates an interval too wide to be informative, not reliable estimation.
 
 
 ## When to use which
@@ -388,7 +381,7 @@ The following table maps $\mathbb{E}[x_0]$ ranges to recommended methods, by use
 |---|---|---|---|---|
 | $\geq 20$ | Delta method | Delta method | Delta method | Delta method |
 | $5$ to $20$ | Fieller | Delta method | Delta method | Fieller |
-| $< 5$ | Do not report | --- | --- | --- |
+| $< 5$ | Avoid reporting | --- | --- | --- |
 
 In the $5$ to $20$ range, the CI and the variance formula serve different purposes. The Fieller CI is more accurate for reporting the uncertainty around $\widehat{RR}$, but it does not produce a variance. The delta method variance formula $\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$ is still computable and still usable for power calculations and weighting, even though the CI derived from it overcovers. The CI precision issue does not invalidate the variance formula for these downstream purposes; it only means the CI endpoints constructed from that variance are too wide.
 
