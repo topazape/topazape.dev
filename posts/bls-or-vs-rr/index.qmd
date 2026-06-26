@@ -12,7 +12,7 @@ categories: ["brand-lift", "statistics"]
 library(tidyverse)
 ```
 
-The previous posts built confidence intervals for the risk ratio of a single Brand Lift Study. This post addresses a different question: how to compare and aggregate effects across studies with different baseline response rates. The scale used to report a single campaign's result to an advertiser and the scale used to pool results across studies serve different purposes and need not be the same.
+The previous posts built confidence intervals for the risk ratio of a single Brand Lift Study (BLS). This post addresses a different question: how to compare and aggregate effects across studies with different baseline response rates. The scale used to report a single campaign's result to an advertiser and the scale used to pool results across studies serve different purposes and need not be the same.
 
 
 ## The ceiling effect: RR and absolute lift depend on the baseline
