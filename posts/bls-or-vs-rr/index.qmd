@@ -15,18 +15,18 @@ library(tidyverse)
 The previous posts built confidence intervals for the risk ratio of a single Brand Lift Study. This post addresses a different question: how to compare and aggregate effects across studies with different baseline response rates. The scale used to report a single campaign's result to an advertiser and the scale used to pool results across studies serve different purposes and need not be the same.
 
 
-## The ceiling effect: RR and RD depend on the baseline
+## The ceiling effect: RR and absolute lift depend on the baseline
 
 $RR = \frac{p_1}{p_0}$ is bounded above by $\frac{1}{p_0}$, since $p_1 \leq 1$. A study with $p_0 = 0.50$ can produce at most $RR = 2$. A study with $p_0 = 0.05$ can produce at most $RR = 20$. The maximum achievable $RR$ is a property of the baseline, not of the ad's effectiveness.
 
-The risk difference $RD = p_1 - p_0$ has the same problem in the other direction: its maximum is $1 - p_0$. A study with $p_0 = 0.80$ can produce at most $RD = 0.20$, regardless of how effective the ad is.
+The absolute lift $p_1 - p_0$ has the same problem in the other direction: its maximum is $1 - p_0$. A study with $p_0 = 0.80$ can produce at most $p_1 - p_0 = 0.20$, regardless of how effective the ad is.
 
-Both $RR$ and $RD$ carry information about the baseline baked into their numerical value. Comparing $RR = 1.30$ from one study to $RR = 1.15$ from another and concluding the first ad was more effective requires the assumption that the two baselines impose similar constraints, which is rarely the case across BLS studies.
+Both $RR$ and absolute lift carry information about the baseline baked into their numerical value. Comparing $RR = 1.30$ from one study to $RR = 1.15$ from another and concluding the first ad was more effective requires the assumption that the two baselines impose similar constraints, which is rarely the case across BLS studies.
 
 
 ## A baseline-free effect requires fixing a scale
 
-A measure that does not depend on $p_0$ requires a model assumption: that ad exposure shifts the outcome by a constant amount on some transformed scale. No transformation-free measure can achieve baseline independence; it must be imposed.
+Is there an effect measure that does not move with $p_0$? There is, but it requires choosing a scale on which the effect is defined to be constant. That choice is a model assumption.
 
 The logistic regression model assumes ad exposure shifts the log-odds of a positive response by a constant $\beta$:
 
@@ -38,14 +38,14 @@ $$p_1 = \frac{p_0 \cdot OR}{1 - p_0 + p_0 \cdot OR}$$
 
 Plugging in $OR = 1.30$:
 
-| $p_0$ | $p_1$  | $RR$  | $RD$  | $OR$ |
+| $p_0$ | $p_1$  | $RR$  | $p_1 - p_0$  | $OR$ |
 |--------|--------|-------|-------|------|
 | 0.05   | 0.064  | 1.278 | 0.014 | 1.30 |
 | 0.10   | 0.126  | 1.262 | 0.026 | 1.30 |
 | 0.30   | 0.358  | 1.193 | 0.058 | 1.30 |
 | 0.50   | 0.565  | 1.130 | 0.065 | 1.30 |
 
-$OR$ is constant by construction. $RR$ decreases from 1.278 to 1.130 as $p_0$ increases: the ceiling compresses it. $RD$ increases from 0.014 to 0.065. The same logit-scale effect produces different $RR$ and $RD$ values at different baselines.
+$OR$ is constant by construction. $RR$ decreases from 1.278 to 1.130 as $p_0$ increases: the ceiling compresses it. Absolute lift increases from 0.014 to 0.065. The same logit-scale effect produces different $RR$ and $p_1 - p_0$ values at different baselines.
 
 This is a model assumption, not a fact. Whether ad exposure truly operates on the logit scale is untestable from a single 2×2 table. The assumption is adopted because it makes cross-study comparison coherent, not because it is known to be correct.
 
@@ -85,7 +85,7 @@ $$\log(\widehat{OR}) \pm z_{1-\alpha/2} \times \sqrt{\frac{1}{a} + \frac{1}{b} +
 
 Exponentiating:
 
-$$\left( \widehat{OR} \cdot \exp(-z \cdot SE), \quad \widehat{OR} \cdot \exp(+z \cdot SE) \right)$$
+$$\left( \widehat{OR} \cdot \exp(-z_{1-\alpha/2} \cdot SE), \quad \widehat{OR} \cdot \exp(+z_{1-\alpha/2} \cdot SE) \right)$$
 
 where $SE = \sqrt{\frac{1}{a} + \frac{1}{b} + \frac{1}{c} + \frac{1}{d}}$.
 
@@ -96,7 +96,7 @@ The interval is always positive, asymmetric around $\widehat{OR}$, and equivaria
 
 Both $\log(\widehat{RR})$ and $\log(\widehat{OR})$ have closed-form variance formulas derived from the delta method. Both support log-transform CIs, SQL implementation, and inverse-variance weighting. The closed-form variance is not a differentiator. Two properties are.
 
-**Baseline independence under logit additivity.** If ad exposure shifts log-odds by a constant $\beta$, then $OR = \exp(\beta)$ does not depend on $p_0$. $RR$ and $RD$ do. This is the reason to use $\log(OR)$ for cross-study aggregation: pooling $\log(OR)$ values from studies with different baselines estimates a common effect on the logit scale. Pooling $\log(RR)$ values conflates the ad effect with the baseline.
+**Baseline independence under logit additivity.** If ad exposure shifts log-odds by a constant $\beta$, then $OR = \exp(\beta)$ does not depend on $p_0$. $RR$ and $p_1 - p_0$ do. This is the reason to use $\log(OR)$ for cross-study aggregation: pooling $\log(OR)$ values from studies with different baselines estimates a common effect on the logit scale. Pooling $\log(RR)$ values conflates the ad effect with the baseline.
 
 **Transpose symmetry.** Swapping rows (exposed $\leftrightarrow$ control) or columns (positive $\leftrightarrow$ negative) in the 2×2 table maps $\log(OR) \to -\log(OR)$: the sign flips, the magnitude is unchanged. $\text{Var}(\log(\widehat{OR})) = \frac{1}{a} + \frac{1}{b} + \frac{1}{c} + \frac{1}{d}$ is symmetric in all four cells, reflecting this property. $\text{Var}(\log(\widehat{RR})) = \frac{1}{a} - \frac{1}{a+b} + \frac{1}{c} - \frac{1}{c+d}$ is not symmetric: swapping positive and negative produces a different variance, because $RR$ does not have transpose symmetry.
 
@@ -107,9 +107,9 @@ The two measures are related by an identity:
 
 $$OR = RR \times \frac{1 - p_0}{1 - p_1}$$
 
-When both $p_0$ and $p_1$ are small, $\frac{1 - p_0}{1 - p_1} \approx 1$ and $OR \approx RR$. This is the rare-disease assumption from epidemiology (Cornfield 1951).
+When both $p_0$ and $p_1$ are small, $\frac{1 - p_0}{1 - p_1} \approx 1$ and $OR \approx RR$.
 
-BLS response rates are not rare. Typical baselines range from 10% to 40%. At these levels, $OR$ and $RR$ diverge:
+BLS baselines are not small. Typical values range from 10% to 40%. At these levels, $OR$ and $RR$ diverge:
 
 | $p_0$ | $p_1$ | $RR$  | $OR$  |
 |--------|--------|-------|-------|
@@ -117,14 +117,7 @@ BLS response rates are not rare. Typical baselines range from 10% to 40%. At the
 | 0.10   | 0.120  | 1.200 | 1.227 |
 | 0.30   | 0.360  | 1.200 | 1.313 |
 
-At $p_0 = 0.30$ with $RR = 1.20$, the $OR$ is $1.31$, a 55% overstatement of the lift if misread as a risk ratio. In BLS contexts, $OR$ must not be interpreted as lift. The reporting scale for advertisers remains $RR - 1$ (relative lift) or $RD$ (absolute lift). $\log(OR)$ serves a different purpose: aggregation.
-
-
-## Reporting scale vs. aggregation scale
-
-Report $RR - 1$ or $RD$ to advertisers. These are directly interpretable: "the exposed group was 20% more likely to respond" or "the response rate increased by 3 percentage points." Aggregate in $\log(OR)$. This separates the ad effect from the baseline, making it possible to compare and pool across studies with different baselines.
-
-These are different scales for different purposes. Reporting in $RR$ and aggregating in $\log(OR)$ is not inconsistent; it is a deliberate separation of concerns.
+At $p_0 = 0.30$ with $RR = 1.20$, the $OR$ is $1.31$, a 55% overstatement of the lift if misread as a risk ratio. In BLS contexts, $OR$ must not be interpreted as lift. The reporting scale for advertisers remains $RR - 1$ (relative lift) or $p_1 - p_0$ (absolute lift). $\log(OR)$ serves a different purpose: aggregation.
 
 
 ## Worked example: three studies at different baselines
@@ -211,11 +204,7 @@ Study A has the widest CI ($SE = 0.201$), driven by the small control positive c
 
 ## Aggregation: why not merge the tables?
 
-The three 2×2 tables could be summed cell-by-cell into a single pooled table. The $OR$ computed from that pooled table is the marginal $OR$. If the $OR$ is the same within each study, the marginal $OR$ should recover that common value. It does not.
-
-The odds ratio is non-collapsible: even when the within-stratum $OR$ is identical across strata and the stratifying variable (here, study) is not a confounder, the marginal $OR$ does not equal the common within-stratum $OR$ (Greenland, Robins, and Pearl 1999). This is a mathematical property of the $OR$, not a data issue.
-
-A numerical example. Two studies, each with $OR = 4.0$ and $n_1 = n_0 = 1{,}000$:
+The three 2×2 tables could be summed cell-by-cell into a single pooled table. If the $OR$ is the same within each study, the pooled $OR$ should recover that common value. It does not. A numerical example with two studies, each with $OR = 4.0$ and $n_1 = n_0 = 1{,}000$:
 
 ```{r}
 #| label: tbl-noncollapse
@@ -255,9 +244,7 @@ bind_rows(nc, nc_merged) |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-Both studies have $OR = 4.0$. The merged table has $p_0 = 0.25$, $p_1 = 0.518$, and $OR = 3.22$. The marginal $OR$ is attenuated toward $1$ even though study is not a confounder. The magnitude of the attenuation depends on how different the baselines are; it vanishes only when all strata share the same $p_0$.
-
-$RR$ and $RD$ do not have this problem. If the within-stratum $RR$ is identical across strata with equal sample sizes, the marginal $RR$ equals the common value. This is collapsibility. The $OR$ lacks it. The consequence: aggregating $OR$ values across studies must be done on the estimates, not on the pooled table. Compute $\log(\widehat{OR})$ within each study, then combine.
+Both studies have $OR = 4.0$, but the merged table gives $OR = 3.22$. Summing the tables distorts the $OR$, even though the within-study effect is the same. ($RR$ does not have this problem: merging preserves a common $RR$.) The fix is straightforward: compute $\log(\widehat{OR})$ within each study, then pool the estimates.
 
 
 ## Pooling study-level log(OR)
@@ -272,7 +259,6 @@ The variance of the pooled estimate is $\text{Var}(\log(\widehat{OR})_{\text{poo
 
 $$\log(\widehat{OR})_{\text{pooled}} \pm 1.96 \times \frac{1}{\sqrt{\sum_k w_k}}$$
 
-This is a fixed-effect model: it assumes the true $\log(OR)$ is the same across all studies. When study-level effects vary (heterogeneity), a random-effects model adds an inter-study variance component $\tau^2$ to each $\text{Var}(\log(\widehat{OR}_k))$ before computing the weights. The fixed-effect version is shown here; the extension is mechanical.
 
 ### Worked example: pooling the three studies
 
