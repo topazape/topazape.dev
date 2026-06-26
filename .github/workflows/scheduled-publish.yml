@@ -1,0 +1,43 @@
+name: Scheduled Publish
+
+on:
+  schedule:
+    - cron: "0 15 * * *" # 00:00 JST
+  workflow_dispatch:
+
+jobs:
+  unflag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT }}
+
+      - name: Publish due posts
+        run: |
+          TODAY=$(TZ=Asia/Tokyo date +%Y-%m-%d)
+          CHANGED=false
+
+          while IFS= read -r -d '' f; do
+            HEAD=$(head -20 "$f")
+            echo "$HEAD" | grep -q '^draft: *true' || continue
+
+            PUB_DATE=$(echo "$HEAD" | grep '^date:' \
+              | sed 's/date: *"\{0,1\}\([0-9-]*\)"\{0,1\}/\1/')
+            [ -z "$PUB_DATE" ] && continue
+            [[ "$PUB_DATE" > "$TODAY" ]] && continue
+
+            sed -i '/^draft: *true$/d; /^draft-mode:.*$/d' "$f"
+            CHANGED=true
+            echo "✓ $f (date: $PUB_DATE)"
+          done < <(find ./posts -name '*.qmd' -print0)
+
+          if [ "$CHANGED" = true ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "publish: scheduled posts for $TODAY"
+            git push
+          else
+            echo "No posts due today"
+          fi
