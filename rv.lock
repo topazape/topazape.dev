@@ -11,6 +11,36 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "Deriv"
+version = "4.2.0"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
+name = "Formula"
+version = "1.2-5"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
+name = "MASS"
+version = "7.3-65"
+source = { builtin = true }
+force_source = false
+dependencies = []
+
+[[packages]]
+name = "Matrix"
+version = "1.7-5"
+source = { builtin = true }
+force_source = false
+dependencies = [
+    "lattice",
+]
+
+[[packages]]
 name = "R.cache"
 version = "0.17.0"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -70,11 +100,48 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "RcppArmadillo"
+version = "15.4.0-1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "Rcpp", requirement = "(>= 1.1.1)" },
+]
+
+[[packages]]
+name = "RcppEigen"
+version = "0.3.4.0.2"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "Rcpp", requirement = "(>= 0.11.0)" },
+]
+
+[[packages]]
+name = "Rdpack"
+version = "2.6.6"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "rbibutils", requirement = "(> 2.4)" },
+]
+
+[[packages]]
 name = "S7"
 version = "0.2.2"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = []
+
+[[packages]]
+name = "TMB"
+version = "1.9.21"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "Matrix", requirement = "(>= 1.0-12)" },
+    "RcppEigen",
+]
 
 [[packages]]
 name = "V8"
@@ -149,6 +216,13 @@ dependencies = [
     "rlang",
     { name = "vctrs", requirement = "(>= 0.2.1)" },
 ]
+
+[[packages]]
+name = "boot"
+version = "1.3-32"
+source = { builtin = true }
+force_source = false
+dependencies = []
 
 [[packages]]
 name = "brew"
@@ -255,6 +329,13 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "colorspace"
+version = "2.1-2"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
 name = "commonmark"
 version = "2.0.0"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -270,6 +351,29 @@ dependencies = [
     { name = "cli", requirement = "(>= 3.4.0)" },
     "memoise",
     { name = "rlang", requirement = "(>= 1.0.0)" },
+]
+
+[[packages]]
+name = "countreg"
+version = "0.3-0"
+source = { repository = "http://r-forge.r-project.org/" }
+force_source = false
+dependencies = [
+    "MASS",
+    { name = "distributions3", requirement = "(>= 0.2.1)" },
+    "Formula",
+]
+
+[[packages]]
+name = "cowplot"
+version = "1.2.0"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "ggplot2", requirement = "(>= 3.5.2)" },
+    "gtable",
+    "rlang",
+    "scales",
 ]
 
 [[packages]]
@@ -342,6 +446,40 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "distributions3"
+version = "0.2.3"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "ggplot2", requirement = "(>= 3.4.0)" },
+    "glue",
+    "rlang",
+]
+
+[[packages]]
+name = "doBy"
+version = "4.7.1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "boot",
+    "broom",
+    "cowplot",
+    "Deriv",
+    "dplyr",
+    "forecast",
+    "ggplot2",
+    "MASS",
+    "Matrix",
+    "modelr",
+    "microbenchmark",
+    "rlang",
+    "purrr",
+    "tibble",
+    "tidyr",
+]
+
+[[packages]]
 name = "dplyr"
 version = "1.2.1"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -399,6 +537,17 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "flexmix"
+version = "2.3-20"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "lattice",
+    { name = "modeltools", requirement = "(>= 0.2-16)" },
+    "nnet",
+]
+
+[[packages]]
 name = "fontawesome"
 version = "0.5.3"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -421,6 +570,34 @@ dependencies = [
     { name = "rlang", requirement = "(>= 1.0.0)" },
     "tibble",
 ]
+
+[[packages]]
+name = "forecast"
+version = "9.0.2"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "colorspace",
+    "fracdiff",
+    { name = "generics", requirement = "(>= 0.1.2)" },
+    { name = "ggplot2", requirement = "(>= 3.4.0)" },
+    "lmtest",
+    "magrittr",
+    "nnet",
+    { name = "Rcpp", requirement = "(>= 0.12.4)" },
+    "timeDate",
+    "urca",
+    "withr",
+    "zoo",
+    { name = "RcppArmadillo", requirement = "(>= 0.2.35)" },
+]
+
+[[packages]]
+name = "fracdiff"
+version = "1.5-4"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
 
 [[packages]]
 name = "fs"
@@ -469,6 +646,24 @@ dependencies = [
     { name = "scales", requirement = "(>= 1.4.0)" },
     { name = "vctrs", requirement = "(>= 0.6.0)" },
     { name = "withr", requirement = "(>= 2.5.0)" },
+]
+
+[[packages]]
+name = "glmmTMB"
+version = "1.1.14"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "TMB", requirement = "(>= 1.9.0)" },
+    { name = "lme4", requirement = "(>= 1.1-18.9000)" },
+    "Matrix",
+    "nlme",
+    "numDeriv",
+    "mgcv",
+    { name = "reformulas", requirement = "(>= 0.4.3.1)" },
+    "pbkrtest",
+    "sandwich",
+    "RcppEigen",
 ]
 
 [[packages]]
@@ -737,6 +932,13 @@ dependencies = [
 ]
 
 [[packages]]
+name = "lattice"
+version = "0.22-9"
+source = { builtin = true }
+force_source = false
+dependencies = []
+
+[[packages]]
 name = "lifecycle"
 version = "1.0.5"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -772,6 +974,35 @@ force_source = false
 dependencies = [
     { name = "commonmark", requirement = "(>= 2.0.0)" },
     { name = "xfun", requirement = "(>= 0.55)" },
+]
+
+[[packages]]
+name = "lme4"
+version = "2.0-1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "Matrix",
+    "MASS",
+    "Rdpack",
+    "boot",
+    "lattice",
+    { name = "minqa", requirement = "(>= 1.1.15)" },
+    { name = "nlme", requirement = "(>= 3.1-123)" },
+    { name = "nloptr", requirement = "(>= 1.0.4)" },
+    { name = "reformulas", requirement = "(>= 0.4.3.1)" },
+    "rlang",
+    { name = "Rcpp", requirement = "(>= 0.10.5)" },
+    { name = "RcppEigen", requirement = "(>= 0.3.3.9.4)" },
+]
+
+[[packages]]
+name = "lmtest"
+version = "0.9-40"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "zoo",
 ]
 
 [[packages]]
@@ -812,11 +1043,37 @@ dependencies = [
 ]
 
 [[packages]]
+name = "mgcv"
+version = "1.9-4"
+source = { builtin = true }
+force_source = false
+dependencies = [
+    { name = "nlme", requirement = "(>= 3.1-64)" },
+    "Matrix",
+]
+
+[[packages]]
+name = "microbenchmark"
+version = "1.5.0"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
 name = "mime"
 version = "0.13"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = []
+
+[[packages]]
+name = "minqa"
+version = "1.2.8"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "Rcpp", requirement = "(>= 0.9.10)" },
+]
 
 [[packages]]
 name = "modelr"
@@ -835,6 +1092,43 @@ dependencies = [
 ]
 
 [[packages]]
+name = "modeltools"
+version = "0.2-24"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
+name = "nlme"
+version = "3.1-169"
+source = { builtin = true }
+force_source = false
+dependencies = [
+    "lattice",
+]
+
+[[packages]]
+name = "nloptr"
+version = "2.2.1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
+name = "nnet"
+version = "7.3-20"
+source = { builtin = true }
+force_source = false
+dependencies = []
+
+[[packages]]
+name = "numDeriv"
+version = "2016.8-1.1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
 name = "openssl"
 version = "2.4.2"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -849,6 +1143,21 @@ version = "0.2.0"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = []
+
+[[packages]]
+name = "pbkrtest"
+version = "0.5.5"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "lme4", requirement = "(>= 1.1.31)" },
+    "broom",
+    "dplyr",
+    "MASS",
+    "numDeriv",
+    { name = "Matrix", requirement = "(>= 1.2.3)" },
+    { name = "doBy", requirement = "(>= 4.6.22)" },
+]
 
 [[packages]]
 name = "pillar"
@@ -968,6 +1277,13 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "rbibutils"
+version = "2.4.1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
 name = "reactR"
 version = "0.6.1"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -1020,6 +1336,16 @@ dependencies = [
     { name = "tibble", requirement = "(>= 2.0.1)" },
     { name = "cpp11", requirement = "(>= 0.5.5)" },
     "progress",
+]
+
+[[packages]]
+name = "reformulas"
+version = "0.4.4"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "Matrix",
+    "Rdpack",
 ]
 
 [[packages]]
@@ -1140,6 +1466,15 @@ dependencies = [
     "selectr",
     "tibble",
     { name = "xml2", requirement = "(>= 1.4.0)" },
+]
+
+[[packages]]
+name = "sandwich"
+version = "3.1-1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "zoo",
 ]
 
 [[packages]]
@@ -1339,6 +1674,13 @@ dependencies = [
 ]
 
 [[packages]]
+name = "timeDate"
+version = "4052.112"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
+
+[[packages]]
 name = "timechange"
 version = "0.4.0"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -1363,6 +1705,15 @@ source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = [
     { name = "cpp11", requirement = "(>= 0.5.2)" },
+]
+
+[[packages]]
+name = "urca"
+version = "1.3-4"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    "nlme",
 ]
 
 [[packages]]
@@ -1457,3 +1808,12 @@ version = "2.3.12"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = []
+
+[[packages]]
+name = "zoo"
+version = "1.8-15"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "lattice", requirement = "(>= 0.20-27)" },
+]
