@@ -21,6 +21,9 @@ website:
 
 format:
   html:
+    include-in-header:
+      text: |
+        <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e8556caa0655498ab75398141db8f9de"}'></script><!-- End Cloudflare Web Analytics -->
     theme:
       - flatly
       - custom.scss
