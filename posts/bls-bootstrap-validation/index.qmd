@@ -1,7 +1,5 @@
 ---
 title: "How Reliable Is the Delta Method CI? Bootstrap Validation and Sample Size Planning"
-draft: true
-draft-mode: unlinked
 date: "2026-07-15"
 categories: ["brand-lift", "statistics"]
 ---
