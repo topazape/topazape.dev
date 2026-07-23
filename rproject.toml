@@ -1,5 +1,5 @@
 [project]
-name = "topazape.github.io"
+name = "topazape.dev"
 r_version = "4.6"
 
 # A list of repositories to fetch packages from. Order matters: we will try to get a package from each repository in order.
@@ -22,5 +22,5 @@ dependencies = [
   "katex",
   "glmmTMB",
   "flexmix",
-    "countreg",
+  "countreg",
 ]
