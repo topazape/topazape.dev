@@ -5,9 +5,9 @@ project:
     - "!rv/"
 
 website:
-  description: "Statistical modeling and causal inference, with applications in advertising effectiveness measurement."
-  site-url: https://topazape.dev
   title: "topazape"
+  site-url: https://topazape.dev
+  description: "Statistical modeling and causal inference, with applications in advertising effectiveness measurement."
   navbar:
     left:
       - about.qmd
@@ -18,6 +18,8 @@ website:
         href: https://x.com/topazape
       - icon: linkedin
         href: https://www.linkedin.com/in/tomonori-kawai
+      - icon: rss
+        href: index.xml
 
 format:
   html:
