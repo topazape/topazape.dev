@@ -1,7 +1,5 @@
 ---
 title: "Fieller's Confidence Interval for Risk Ratios: Removing the Taylor Approximation"
-draft: true
-draft-mode: unlinked
 date: "2026-07-29"
 categories: ["brand-lift", "statistics"]
 ---
