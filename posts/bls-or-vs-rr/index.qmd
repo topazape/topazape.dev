@@ -1,7 +1,5 @@
 ---
 title: "From Risk Ratios to Odds Ratios: Choosing an Aggregation Scale for Brand Lift"
-draft: true
-draft-mode: unlinked
 date: "2026-08-12"
 categories: ["brand-lift", "statistics", "meta-analysis"]
 ---
