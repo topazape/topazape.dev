@@ -31,7 +31,7 @@ The bootstrap percentile CI does not require the normal approximation underlying
 Given observed counts $(x_1, n, x_0, n)$:
 
 1.  Compute $\hat{p}_1 = \frac{x_1}{n}$ and $\hat{p}_0 = \frac{x_0}{n}$.
-2.  For $b = 1, \dots, B$: draw $x_1^* \sim \text{Binomial}(n, \hat{p}_1)$ and $x_0^* \sim \text{Binomial}(n, \hat{p}_0)$ independently. If $x_0^* = 0$, discard the replicate ($\widehat{RR}^*$ is undefined). Otherwise compute $\widehat{RR}^*_b = (x_1^*/n) / (x_0^*/n)$.
+2.  For $b = 1, \dots, B$: draw $x_1^* \sim \text{Binomial}(n, \hat{p}_1)$ and $x_0^* \sim \text{Binomial}(n, \hat{p}_0)$ independently. If $x_0^* = 0$ or $x_1^* = 0$, discard the replicate: $\widehat{RR}^*$ is undefined at $x_0^* = 0$, and the coverage simulation below skips replications where either observed count is zero, so the resampling applies the same exclusion. Otherwise compute $\widehat{RR}^*_b = (x_1^*/n) / (x_0^*/n)$.
 3.  The $(1-\alpha)$ CI is $\left( \widehat{RR}^*_{(\alpha/2)}, \; \widehat{RR}^*_{(1-\alpha/2)} \right)$.
 
 ## Coverage simulation
@@ -335,7 +335,7 @@ bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 10000, alpha = 0.05) {
   x1_star <- rbinom(B, n1, p1_hat)
   x0_star <- rbinom(B, n0, p0_hat)
 
-  # Discard replicates where x0* = 0 (RR undefined)
+  # Discard replicates where x0* = 0 (RR undefined) or x1* = 0
   valid <- x0_star > 0 & x1_star > 0
   rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
   quantile(rr_star, c(alpha / 2, 1 - alpha / 2))

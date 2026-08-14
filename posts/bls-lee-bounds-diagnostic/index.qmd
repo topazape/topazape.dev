@@ -55,7 +55,7 @@ The pair $(S(0), S(1))$ partitions the population into four strata:
 
 **Monotonicity.** $S(1) \geq S(0)$ for all individuals. Exposure does not cause anyone to stop responding. Under this assumption, the defier stratum is empty.
 
-Monotonicity is not testable from the observed data. It is adopted as a structural assumption about the survey response process: seeing an ad may prompt someone to engage with a subsequent survey about the ad, but it does not suppress the response of someone who would have responded anyway. For BLS, this is a reasonable assumption. It is hard to construct a mechanism where seeing an ad causes someone to skip a survey they would otherwise have completed.
+Monotonicity is not testable from the observed data. It is adopted as a structural assumption about the survey response process: seeing an ad may prompt someone to engage with a subsequent survey about the ad, but it does not suppress the response of someone who would have responded anyway. For BLS, this is an assumption rather than a fact: the reverse mechanism is constructible, since irritation with the ad could make someone decline a survey about it, and violations in that direction are outside what these bounds control. If the observed response rates show $q_1 < q_0$, the assumption is applied in the reverse direction and the trimming moves to the control group. The formulas below assume $q_1 \geq q_0$.
 
 ### Strata proportions
 
@@ -245,6 +245,9 @@ Running this validation requires survey delivery counts $N_1$ and $N_0$ alongsid
 
 ``` r
 bls_lee_bounds <- function(q1, q0, p1_hat, p0_hat) {
+  # Formulas assume trimming on the exposed group
+  stopifnot(q1 >= q0)
+
   # Trimming fraction
   p <- (q1 - q0) / q1
 
