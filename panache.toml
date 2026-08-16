@@ -1,0 +1,11 @@
+# Markdown flavor (affects default extensions)
+flavor = "quarto"  # Options: pandoc, quarto, rmarkdown, gfm, commonmark
+
+# Formatting options
+[format]
+line-width = 80  # Line width for wrapping
+wrap = "reflow"  # Wrapping mode. Options: "reflow", "preserve", "sentence"
+
+# External code formatters
+[formatters]
+r = "air"
