@@ -95,40 +95,30 @@ panel <- panel_gen |>
 Suppose you are a data scientist at an AVOD service.
 
 On 2026-06-01, users became able to pause a video ad, but only on iOS devices.
-Users cannot skip ads while watching. So, before this feature, the only way to
-stop watching during an ad was to close the app or the browser. In that case,
-the play was counted as incomplete. This feature is expected to replace some of
-these exits, so the completion rate on iOS should increase.
+Users cannot skip ads while watching.
+So, before this feature, the only way to stop watching during an ad was to close the app or the browser.
+In that case, the play was counted as incomplete.
+This feature is expected to replace some of these exits, so the completion rate on iOS should increase.
 
-After the release, the dashboard shows a higher completion rate on iOS than
-before. You'd want to report "the feature is working," but all you have is daily
-completion rates by device. Data in this format, the same units (devices, in
-this case) observed repeatedly over time, is called a panel, and I'll use that
-term from here on. So, can we look at this panel and say "the feature lifted the
-completion rate by X points"?
+After the release, the dashboard shows a higher completion rate on iOS than before.
+You'd want to report "the feature is working," but all you have is daily completion rates by device.
+Data in this format, the same units (devices, in this case) observed repeatedly over time, is called a panel, and I'll use that term from here on.
+So, can we look at this panel and say "the feature lifted the completion rate by X points"?
 
 This article does two things:
 
-1. Before/after comparison: compute the estimate everyone tries first, and
-   confirm with numbers that it cannot separate an effect from everything else
-   moving at the same time. As we'll see, running it on a date where nothing
-   was released produces an "effect" of $+0.62$ percentage points (pp from here
-   on), around 60% of the true effect, and nothing in the data marks it as
-   spurious.
+1. Before/after comparison: compute the estimate everyone tries first, and confirm with numbers that it cannot separate an effect from everything else moving at the same time.
+   As we'll see, running it on a date where nothing was released produces an "effect" of $+0.62$ percentage points (pp from here on), around 60% of the true effect, and nothing in the data marks it as spurious.
 
-2. Synthetic data design: build the validation dataset used throughout this
-   series. The series covers difference-in-differences (DiD), the synthetic
-   control method (SCM), CausalImpact, and a randomized comparison, and the
-   backbone of all four is synthetic data whose true treatment effect is known.
+2. Synthetic data design: build the validation dataset used throughout this series.
+   The series covers difference-in-differences (DiD), the synthetic control method (SCM), CausalImpact, and a randomized comparison, and the backbone of all four is synthetic data whose true treatment effect is known.
    As long as we know the answer, we can score how far off each method is.
 
 ## Defining the metrics
 
-An impression is one ad play start, and a complete is a play that ran to the
-end. The completion rate is defined as
-$\text{complete} / \text{impression}$. The table below maps how a play can end
-to the two metrics; every play that starts counts as exactly one impression,
-however it ends.
+An impression is one ad play start, and a complete is a play that ran to the end.
+The completion rate is defined as $\text{complete} / \text{impression}$.
+The table below maps how a play can end to the two metrics; every play that starts counts as exactly one impression, however it ends.
 
   | How the play ends                                | impression | complete |
   | ------------------------------------------------ | ---------: | -------: |
@@ -137,43 +127,36 @@ however it ends.
   | App or browser closed to stop watching (an exit) |          1 |        0 |
   | Cut off by a network failure or an app crash     |          1 |        0 |
 
-The pause feature can only act on the third row. The mechanism from the opening
-is exactly this: shift some of those exits into the second row, and the
-completion rate goes up. It cannot rescue unintentional incomplete plays like
-the fourth row. This boundary matters later, in the sanity check on the size of
-the true effect.
+The pause feature can only act on the third row.
+The mechanism from the opening is exactly this: shift some of those exits into the second row, and the completion rate goes up.
+It cannot rescue unintentional incomplete plays like the fourth row.
+This boundary matters later, in the sanity check on the size of the true effect.
 
-One more assumption: whether a play counts as complete is settled within the
-same day. Pauses are assumed to be short, so a play that starts on day $t$ is
-resolved as complete or incomplete within day $t$.
+One more assumption: whether a play counts as complete is settled within the same day.
+Pauses are assumed to be short, so a play that starts on day $t$ is resolved as complete or incomplete within day $t$.
 
 ## A before/after comparison on iOS alone
 
-The simplest way to measure the effect is to compare the completion rates before
-and after the release. Pick an anchor date $t_0$ and time window lengths
-$k_{\text{pre}}, k_{\text{post}}$, then compute the following difference:
+The simplest way to measure the effect is to compare the completion rates before and after the release.
+Pick an anchor date $t_0$ and time window lengths $k_{\text{pre}}, k_{\text{post}}$, then compute the following difference:
 
 $$
   \hat{\Delta}(t_0;\, k_{\text{pre}}, k_{\text{post}}) = \frac{\sum_{t \in W_{\text{post}}} x_t}{\sum_{t \in W_{\text{post}}} n_t} - \frac{\sum_{t \in W_{\text{pre}}} x_t}{\sum_{t \in W_{\text{pre}}} n_t}
 $$
 
-Here, $n_t$ and $x_t$ are the impressions and completes for iOS on day $t$, with
-the time windows defined as $W_{\text{pre}} = [t_0 - k_{\text{pre}},\, t_0)$ and
-$W_{\text{post}} = [t_0,\, t_0 + k_{\text{post}})$. Results are reported in pp.
+Here, $n_t$ and $x_t$ are the impressions and completes for iOS on day $t$, with the time windows defined as $W_{\text{pre}} = [t_0 - k_{\text{pre}},\, t_0)$ and $W_{\text{post}} = [t_0,\, t_0 + k_{\text{post}})$.
+Results are reported in pp.
 
-For comparison, prepare a fake anchor date as well: run the same calculation on
-a date with no release anywhere near it, and watch how the estimator behaves
-where the true answer is zero. This is the same idea as a placebo in drug
-trials, hence the name: the placebo anchor date. The date is 2026-03-02, a
-Monday, matching the day of the week of the actual release. It also splits the
-pre-period in half, so a 91-day window on each side of it covers the pre-period
-exactly.
+For comparison, prepare a fake anchor date as well: run the same calculation on a date with no release anywhere near it, and watch how the estimator behaves where the true answer is zero.
+This is the same idea as a placebo in drug trials, hence the name: the placebo anchor date.
+The date is 2026-03-02, a Monday, matching the day of the week of the actual release.
+It also splits the pre-period in half, so a 91-day window on each side of it covers the pre-period exactly.
 
 ```{r}
 #| label: fig-ios-series
 #| fig-cap: >-
-#|   Daily completion rate on iOS. The dashed line marks the feature release
-#|   date (2026-06-01), the dotted line the placebo anchor date (2026-03-02).
+#|   Daily completion rate on iOS.
+#|   The dashed line marks the feature release date (2026-06-01), the dotted line the placebo anchor date (2026-03-02).
 #| echo: false
 #| message: false
 
@@ -193,18 +176,12 @@ panel |>
   theme_classic(base_family = "ubuntu", base_size = 13)
 ```
 
-@fig-ios-series shows three movements mixed together in the series: a weekly
-cycle that dips 0.4 to 0.6pp on weekends, a slow trend that drifts down by about
-0.6pp over the eight months, and daily noise with a standard deviation of around
-0.4pp. A before/after difference picks up all three, with no way to tell them
-apart from the treatment effect.
+@fig-ios-series shows three movements mixed together in the series: a weekly cycle that dips 0.4 to 0.6pp on weekends, a slow trend that drifts down by about 0.6pp over the eight months, and daily noise with a standard deviation of around 0.4pp.
+A before/after difference picks up all three, with no way to tell them apart from the treatment effect.
 
-@tbl-naive-grid shows how much gets picked up: four time windows anchored at the
-release date, and four more at the placebo anchor date 13 weeks earlier, eight
-estimates in total. The three shorter windows are the same on both sides. The
-longest one differs, because each anchor has a different amount of data around
-it: 182 days before and 61 days after the release, and 91 days on each side of
-the placebo anchor.
+@tbl-naive-grid shows how much gets picked up: four time windows anchored at the release date, and four more at the placebo anchor date 13 weeks earlier, eight estimates in total.
+The three shorter windows are the same on both sides.
+The longest one differs, because each anchor has a different amount of data around it: 182 days before and 61 days after the release, and 91 days on each side of the placebo anchor.
 
 ```{r}
 #| label: naive-grid
@@ -264,8 +241,7 @@ grid <- tribble(
 ```{r}
 #| label: tbl-naive-grid
 #| tbl-cap: >-
-#|   A before/after comparison on iOS across anchor dates and time window
-#|   lengths.
+#|   A before/after comparison on iOS across anchor dates and time window lengths.
 #| echo: false
 #| message: false
 
@@ -289,62 +265,48 @@ grid |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-Start with the placebo side, where the right answer is zero. The estimates run
-from $-0.38$ to $+0.62$pp, and the $+0.62$pp is around 60% of the true effect
-on the release side. A feature that was never shipped produces a number a
-reviewer would accept as a result. On the release side, the estimate runs from
-$+0.85$pp with the longest window to $+1.57$pp with the 3-day window, so the
-choice of window alone moves the answer by $0.7$pp. Both sides come out of the
-same estimator, and nothing in the output distinguishes them.
+Start with the placebo side, where the right answer is zero.
+The estimates run from $-0.38$ to $+0.62$pp, and the $+0.62$pp is around 60% of the true effect on the release side.
+A feature that was never shipped produces a number a reviewer would accept as a result.
+On the release side, the estimate runs from $+0.85$pp with the longest window to $+1.57$pp with the 3-day window, so the choice of window alone moves the answer by $0.7$pp.
+Both sides come out of the same estimator, and nothing in the output distinguishes them.
 
-The mechanism is exactly the structure visible in the figure. A short,
-asymmetric window like the 3-day one imports the weekly cycle: with a Monday
-anchor, the three days before are Friday through Sunday and the three days after
-are Monday through Wednesday, so the weekend dip turns straight into the
-difference. A long window imports the trend instead: with 182 days before the
-release and 61 days after it, the center of the pre-period sits about four
-months before the center of the post-period, so four months of slow decline
-accumulate in the difference. And in both cases, sampling noise rides on top.
+The mechanism is exactly the structure visible in the figure.
+A short, asymmetric window like the 3-day one imports the weekly cycle: with a Monday anchor, the three days before are Friday through Sunday and the three days after are Monday through Wednesday, so the weekend dip turns straight into the difference.
+A long window imports the trend instead: with 182 days before the release and 61 days after it, the center of the pre-period sits about four months before the center of the post-period, so four months of slow decline accumulate in the difference.
+And in both cases, sampling noise rides on top.
 
-The key point is that there is no way to separate these three components from
-the treatment effect using this series alone. The question a before/after
-comparison answers is "did the completion rate change over time," and the
-feature is only one of the things that changed during that time. A before/after
-comparison on observational data is not a stand-in for the counterfactual.
+The key point is that there is no way to separate these three components from the treatment effect using this series alone.
+The question a before/after comparison answers is "did the completion rate change over time," and the feature is only one of the things that changed during that time.
+A before/after comparison on observational data is not a stand-in for the counterfactual.
 
 ## Designing the synthetic data
 
-So, can DiD separate them? What about SCM, or CausalImpact? Working through that
-question one method at a time is what this series is for, and checking an answer
-requires a scoring key: the right answer. That is why the panel shown so far is
-synthetic.
+So, can DiD separate them?
+What about SCM, or CausalImpact?
+Working through that question one method at a time is what this series is for, and checking an answer requires a scoring key: the right answer.
+That is why the panel shown so far is synthetic.
 
-Two simplifications. First, the effect is constant from the day of release; no
-gradual adoption ramp is modeled. Second, the treatment does not affect the
-number of impressions. Preventing an exit could in reality extend the session
-and add exposure, but generating the denominator independently of the treatment
-does not affect a rate analysis, so that path is cut here.
+Two simplifications.
+First, the effect is constant from the day of release; no gradual adoption ramp is modeled.
+Second, the treatment does not affect the number of impressions.
+Preventing an exit could in reality extend the session and add exposure, but generating the denominator independently of the treatment does not affect a rate analysis, so that path is cut here.
 
 ### Design requirements
 
-1. The true treatment effect is known. Every estimator in this series is checked
-   against it, and the first to be scored is the set of eight before/after
-   estimates above.
+1. The true treatment effect is known.
+   Every estimator in this series is checked against it, and the first to be scored is the set of eight before/after estimates above.
 
 2. Devices differ in level while sharing the weekly cycle and the slow trend.
-   This is exactly the confounding structure that broke the before/after
-   comparison, and at the same time the structure that comparison-based methods
-   rely on.
+   This is exactly the confounding structure that broke the before/after comparison, and at the same time the structure that comparison-based methods rely on.
 
-3. The iOS level sits inside the convex hull of the control devices, that is,
-   between the minimum and the maximum of the controls. Why this matters is
-   explained in the third article (SCM); here it is only stated as a
-   requirement.
+3. The iOS level sits inside the convex hull of the control devices, that is, between the minimum and the maximum of the controls.
+   Why this matters is explained in the third article (SCM); here it is only stated as a requirement.
 
 ### The generating model
 
-The panel is generated directly as device-by-day aggregate cells; no individual
-users are created. Users exist only as a per-device volume scale $M_d$.
+The panel is generated directly as device-by-day aggregate cells; no individual users are created.
+Users exist only as a per-device volume scale $M_d$.
 
 $$
   n_{dt} \sim \text{Poisson}(1.5\, M_d), \qquad x_{dt} \sim \text{Binomial}(n_{dt},\, p_{dt})
@@ -354,24 +316,19 @@ $$
   \text{logit}\, p_{dt} = \alpha_d + w_{\text{dow}(t)} + \gamma \cdot \frac{t}{T_{\text{total}}} + \tau \cdot 1\{d = \text{ios},\ t \geq T\}
 $$
 
-$n_{dt}$ is the number of impressions for device $d$ on day $t$, $x_{dt}$ is the
-number of completes, and $p_{dt}$ is the probability that one impression ends as
-a complete. What happens here is addition on the logit scale: a device-specific
-intercept $\alpha_d$, plus the day-of-week effect $w$, plus a slow trend
-$\gamma$ shared by all devices, plus the treatment effect $\tau$ that applies
-only to iOS after the release. $t / T_{\text{total}}$ is the elapsed fraction of
-the full period and runs from 0 to 1. The period runs from 2025-12-01 to
-2026-07-31, 243 days in total, with the release at $T =$ 2026-06-01, splitting
-it into 182 pre-period days and 61 post-period days.
+$n_{dt}$ is the number of impressions for device $d$ on day $t$, $x_{dt}$ is the number of completes, and $p_{dt}$ is the probability that one impression ends as a complete.
+What happens here is addition on the logit scale: a device-specific intercept $\alpha_d$, plus the day-of-week effect $w$, plus a slow trend $\gamma$ shared by all devices, plus the treatment effect $\tau$ that applies only to iOS after the release.
+$t / T_{\text{total}}$ is the elapsed fraction of the full period and runs from 0 to 1.
+The period runs from 2025-12-01 to 2026-07-31, 243 days in total, with the release at $T =$ 2026-06-01, splitting it into 182 pre-period days and 61 post-period days.
 
 ### Parameters
 
 ```{r}
 #| label: tbl-devices
 #| tbl-cap: >-
-#|   Per-device parameters. $\alpha_d$ is the device-specific intercept, the
-#|   logit of the weekday completion rate at the start of the period. $M_d$
-#|   scales the daily impression volume.
+#|   Per-device parameters.
+#|   $\alpha_d$ is the device-specific intercept, the logit of the weekday completion rate at the start of the period.
+#|   $M_d$ scales the daily impression volume.
 #| echo: false
 #| message: false
 
@@ -396,23 +353,18 @@ devices |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-@tbl-devices lists the values that differ by device; the remaining parameters
-are common to all of them. The day-of-week effect is $0$ for Monday through
-Thursday, $+0.02$ for Friday, $-0.06$ for Saturday, and $-0.09$ for Sunday, the
-common trend is $\gamma = -0.10$ over the full period, and the treatment effect
-is $\tau = +0.17$, all on the logit scale. The random seed is fixed at 1.
-Converted to the iOS level, these give a weekend dip of 0.4 to 0.6pp, a decline
-of $-0.63$pp from the trend over the full period, and binomial noise of about
-0.4pp in standard error at roughly 4,000 impressions per day. The three
-movements visible in the first figure correspond, in order, to the day-of-week
-effect, the common trend, and the draw from the binomial distribution.
+@tbl-devices lists the values that differ by device; the remaining parameters are common to all of them.
+The day-of-week effect is $0$ for Monday through Thursday, $+0.02$ for Friday, $-0.06$ for Saturday, and $-0.09$ for Sunday, the common trend is $\gamma = -0.10$ over the full period, and the treatment effect is $\tau = +0.17$, all on the logit scale.
+The random seed is fixed at 1.
+Converted to the iOS level, these give a weekend dip of 0.4 to 0.6pp, a decline of $-0.63$pp from the trend over the full period, and binomial noise of about 0.4pp in standard error at roughly 4,000 impressions per day.
+The three movements visible in the first figure correspond, in order, to the day-of-week effect, the common trend, and the draw from the binomial distribution.
 
 ```{r}
 #| label: fig-panel-devices
 #| fig-cap: >-
-#|   Daily completion rate for all 11 devices. iOS is in red; the 10 control
-#|   devices are thin lines, each in a different color. The dashed line marks
-#|   the feature release date.
+#|   Daily completion rate for all 11 devices.
+#|   iOS is in red; the 10 control devices are thin lines, each in a different color.
+#|   The dashed line marks the feature release date.
 #| echo: false
 #| message: false
 
@@ -436,89 +388,64 @@ ggplot(mapping = aes(x = date, y = complete_rate, color = device)) +
   theme(legend.position = "none")
 ```
 
-@fig-panel-devices shows requirements 2 and 3 realized. All 11 series share the
-same weekend dip and the same downward trend; what differs is the level and the
-coarseness of the noise, which follows how small $M_d$ is. The iOS pre-period
-level is 93.1%, fourth lowest of the 11 devices, sitting neatly inside the
-control range of 91.5 to 97.1%.
+@fig-panel-devices shows requirements 2 and 3 realized.
+All 11 series share the same weekend dip and the same downward trend; what differs is the level and the coarseness of the noise, which follows how small $M_d$ is.
+The iOS pre-period level is 93.1%, fourth lowest of the 11 devices, sitting neatly inside the control range of 91.5 to 97.1%.
 
 ### The true treatment effect
 
-The true value used here is the average treatment effect on the treated (ATT),
-on the pp scale. Concretely, for each iOS post-period cell, take the difference
-between the generating rate with $\tau$ and the generating rate without it, then
-average those differences weighted by impressions.
+The true value used here is the average treatment effect on the treated (ATT), on the pp scale.
+Concretely, for each iOS post-period cell, take the difference between the generating rate with $\tau$ and the generating rate without it, then average those differences weighted by impressions.
 
 $$
   \text{ATT} = \frac{\sum_{t \geq T} n_{\text{ios},t} \left[ \sigma(\ell_{\text{ios},t}) - \sigma(\ell_{\text{ios},t} - \tau) \right]}{\sum_{t \geq T} n_{\text{ios},t}} = +1.049 \text{ pp}
 $$
 
-$\sigma$ is the logistic function and $\ell$ the linear predictor including the
-treatment. This value comes from the generating equation, not from an estimate
-based on the realized completes. The only part the seed touches is the weight
-$n$ drawn from the Poisson, so it works as a fixed yardstick in practice. From
-here on, every estimator in this series is reported next to this $+1.049$pp.
+$\sigma$ is the logistic function and $\ell$ the linear predictor including the treatment.
+This value comes from the generating equation, not from an estimate based on the realized completes.
+The only part the seed touches is the weight $n$ drawn from the Poisson, so it works as a fixed yardstick in practice.
+From here on, every estimator in this series is reported next to this $+1.049$pp.
 
-The size of the effect deserves a sanity check against the mechanism. Without
-treatment, the iOS completion rate on a weekday at the start of the period is
-$\sigma(2.67) = 93.5\%$, which means 6.5pp of plays end incomplete. A true
-effect of $+1.05$pp converts one sixth of that into completes. Incomplete plays
-also include network failures and crashes, so among deliberate exits alone, the
-share the pause feature takes over is larger than one sixth. That is an
-aggressive number for a single feature, but the order of magnitude is realistic,
-and it is nowhere near a fantasy value that would eat up the entire pool of
-incomplete plays.
+The size of the effect deserves a sanity check against the mechanism.
+Without treatment, the iOS completion rate on a weekday at the start of the period is $\sigma(2.67) = 93.5\%$, which means 6.5pp of plays end incomplete.
+A true effect of $+1.05$pp converts one sixth of that into completes.
+Incomplete plays also include network failures and crashes, so among deliberate exits alone, the share the pause feature takes over is larger than one sixth.
+That is an aggressive number for a single feature, but the order of magnitude is realistic, and it is nowhere near a fantasy value that would eat up the entire pool of incomplete plays.
 
 ### Two variants from one random stream
 
-The generator outputs two datasets: parallel, the main line, and divergent, in
-which iOS alone drifts away from the pre-period onward. The divergent variant
-adds $\delta \cdot t / T_{\text{total}}$ ($\delta = +0.30$) to the iOS logit,
-opening a gap of about 1.3pp by the end of the pre-period. In the second
-article, this variant plays the world where the assumption behind the method
-breaks.
+The generator outputs two datasets: parallel, the main line, and divergent, in which iOS alone drifts away from the pre-period onward.
+The divergent variant adds $\delta \cdot t / T_{\text{total}}$ ($\delta = +0.30$) to the iOS logit, opening a gap of about 1.3pp by the end of the pre-period.
+In the second article, this variant plays the world where the assumption behind the method breaks.
 
-The trick is in `qbinom`. `qbinom(r, n, p)` passes a uniform draw $r$ through
-the binomial quantile function; the distribution is the same as
-`rbinom(1, n, p)`, but the result is determined once $r$ is fixed. A single $r$
-per cell is shared by both variants, so control cells, where both $n$ and $p$
-are identical, produce bit-identical completes (verified:
-`all(complete_parallel == complete_divergent)` returns `TRUE` for the control
-devices). The iOS cells have different $p$ across variants, so their values do
-not match, but they pass through the same $r$ and their noise moves in the same
-direction (comonotone). If an analysis of the two files differs, then, the
-difference comes from the divergent trend term, not from a fresh draw of the
-random numbers.
+The trick is in `qbinom`.
+`qbinom(r, n, p)` passes a uniform draw $r$ through the binomial quantile function; the distribution is the same as `rbinom(1, n, p)`, but the result is determined once $r$ is fixed.
+A single $r$ per cell is shared by both variants, so control cells, where both $n$ and $p$ are identical, produce bit-identical completes (verified: `all(complete_parallel == complete_divergent)` returns `TRUE` for the control devices).
+The iOS cells have different $p$ across variants, so their values do not match, but they pass through the same $r$ and their noise moves in the same direction (comonotone).
+If an analysis of the two files differs, then, the difference comes from the divergent trend term, not from a fresh draw of the random numbers.
 
-The output files are `panel_parallel.csv` and `panel_divergent.csv`, both with
-the schema `date, device, post, impression, complete, complete_rate`. `post` can
-be derived from the release date, but it is kept as a column for convenience.
+The output files are `panel_parallel.csv` and `panel_divergent.csv`, both with the schema `date, device, post, impression, complete, complete_rate`.
+`post` can be derived from the release date, but it is kept as a column for convenience.
 
 ## Decomposing the comparison with the true values
 
-Requirement 1 pays off right here. With synthetic data, both the treated
-generating rate $p_{dt} = \sigma(\ell_{dt})$ and the untreated one
-$p^0_{dt} = \sigma(\ell_{dt} - \tau \cdot 1\{d = \text{ios},\ t \geq T\})$ are
-available for every cell. Replacing the completes inside $\hat{\Delta}$ with
-these rates gives the expectation conditional on the impression counts, and that
-expectation splits exactly into a treatment component and a contamination
-component.
+Requirement 1 pays off right here.
+With synthetic data, both the treated generating rate $p_{dt} = \sigma(\ell_{dt})$ and the untreated one $p^0_{dt} = \sigma(\ell_{dt} - \tau \cdot 1\{d = \text{ios},\ t \geq T\})$ are available for every cell.
+Replacing the completes inside $\hat{\Delta}$ with these rates gives the expectation conditional on the impression counts, and that expectation splits exactly into a treatment component and a contamination component.
 
 $$
   \hat{\Delta} = \underbrace{\left[ m(W_{\text{post}}) - m(W_{\text{pre}}) \right] - \left[ m^0(W_{\text{post}}) - m^0(W_{\text{pre}}) \right]}_{\text{treatment}} + \underbrace{m^0(W_{\text{post}}) - m^0(W_{\text{pre}})}_{\text{contamination}} + \text{noise}
 $$
 
-Here $m(W) = \sum_{t \in W} n_t p_t / \sum_{t \in W} n_t$, and $m^0$ is the same
-quantity computed with $p^0$. The contamination term is the before/after
-difference in a world where $\tau = 0$; the influence of the trend and of the
-day-of-week composition of the window collects here. The noise is the residual,
-the realized value minus its expectation.
+Here $m(W) = \sum_{t \in W} n_t p_t / \sum_{t \in W} n_t$, and $m^0$ is the same quantity computed with $p^0$.
+The contamination term is the before/after difference in a world where $\tau = 0$; the influence of the trend and of the day-of-week composition of the window collects here.
+The noise is the residual, the realized value minus its expectation.
 
 ```{r}
 #| label: tbl-decomp
 #| tbl-cap: >-
-#|   Exact decomposition of the eight estimates. Treatment, contamination, and
-#|   noise sum to the estimate up to rounding.
+#|   Exact decomposition of the eight estimates.
+#|   Treatment, contamination, and noise sum to the estimate up to rounding.
 #| echo: false
 #| message: false
 
@@ -545,36 +472,25 @@ grid |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-@tbl-decomp is the reveal behind @tbl-naive-grid. The treatment component barely
-moves across the four release-side windows, staying between $+1.02$ and
-$+1.05$pp; what looked like movement was contamination and noise all along.
+@tbl-decomp is the reveal behind @tbl-naive-grid.
+The treatment component barely moves across the four release-side windows, staying between $+1.02$ and $+1.05$pp; what looked like movement was contamination and noise all along.
 
-Contamination changes sign with the window. For the longest release-side window
-it is $-0.31$pp, and the cause is the trend: the centers of the pre-period and
-the post-period are 0.50 apart in elapsed fraction $t/T_{\text{total}}$, about
-four months in days, and a logit decline of $-0.10 \times 0.50 = -0.050$ works
-out to $-0.31$pp at the iOS level. For the 3-day window it is $+0.29$pp, and the
-cause is the day-of-week composition: the pre side is Friday through Sunday
-(average $w$ of $-0.043$) and the post side is Monday through Wednesday
-($w = 0$), so that gap carries straight through. The 7-day and 28-day windows
-are balanced across days of the week and too short for the trend to bite, so
-contamination is nearly zero; noise of $+0.31$ to $+0.38$pp takes over as the
-main source of error instead.
+Contamination changes sign with the window.
+For the longest release-side window it is $-0.31$pp, and the cause is the trend: the centers of the pre-period and the post-period are 0.50 apart in elapsed fraction $t/T_{\text{total}}$, about four months in days, and a logit decline of $-0.10 \times 0.50 = -0.050$ works out to $-0.31$pp at the iOS level.
+For the 3-day window it is $+0.29$pp, and the cause is the day-of-week composition: the pre side is Friday through Sunday (average $w$ of $-0.043$) and the post side is Monday through Wednesday ($w = 0$), so that gap carries straight through.
+The 7-day and 28-day windows are balanced across days of the week and too short for the trend to bite, so contamination is nearly zero; noise of $+0.31$ to $+0.38$pp takes over as the main source of error instead.
 
-In real data, only the first numeric column of this table is observable. On a
-real panel there is no way to split the $+1.41$pp from the 7-day window into
-"$+1.04$ of effect and $+0.38$ of luck." That single point is the reason this
-series runs on synthetic data. In the articles that follow, each estimate is
-reported next to the true value of $+1.049$pp, and the gap between them is
-settled by attribution rather than argument.
+In real data, only the first numeric column of this table is observable.
+On a real panel there is no way to split the $+1.41$pp from the 7-day window into "$+1.04$ of effect and $+0.38$ of luck."
+That single point is the reason this series runs on synthetic data.
+In the articles that follow, each estimate is reported next to the true value of $+1.049$pp, and the gap between them is settled by attribution rather than argument.
 
 ## R code
 
-The generator below is the canonical implementation for this series. Running it
-writes the two CSV files that every later article reads, so the next article on
-DiD starts from `data/panel_parallel.csv` rather than regenerating the panel.
+The generator below is the canonical implementation for this series.
+Running it writes the two CSV files that every later article reads, so the next article on DiD starts from `data/panel_parallel.csv` rather than regenerating the panel.
 
-``` r
+```r
 library(tidyverse)
 
 devices <- tribble(
@@ -689,7 +605,5 @@ panel |>
   write_csv("data/panel_divergent.csv")
 ```
 
-Each file has 2,673 rows, 11 devices over 243 days, with the schema
-`date, device, post, impression, complete, complete_rate`. The `variant` column
-is dropped on the way out, so the two files are interchangeable as inputs: an
-analysis written against one runs unchanged against the other.
+Each file has 2,673 rows, 11 devices over 243 days, with the schema `date, device, post, impression, complete, complete_rate`.
+The `variant` column is dropped on the way out, so the two files are interchangeable as inputs: an analysis written against one runs unchanged against the other.
