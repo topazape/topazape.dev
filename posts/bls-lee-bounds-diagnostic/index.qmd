@@ -1,7 +1,5 @@
 ---
 title: "Differential Attrition in Brand Lift: Diagnosing Selection Bias with Lee Bounds"
-draft: true
-draft-mode: unlinked
 date: "2026-08-26"
 categories: ["brand-lift", "statistics", "causal-inference"]
 ---
