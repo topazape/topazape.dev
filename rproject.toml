@@ -24,4 +24,6 @@ dependencies = [
   "flexmix",
   "countreg",
   "slider",
+    "gtsummary",
+    "broom.helpers",
 ]
