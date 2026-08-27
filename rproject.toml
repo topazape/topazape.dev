@@ -26,4 +26,5 @@ dependencies = [
   "slider",
     "gtsummary",
     "broom.helpers",
+    "tidysynth",
 ]
