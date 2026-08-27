@@ -155,7 +155,7 @@ panel |>
   geom_point(aes(y = gap), size = 0.6, alpha = 0.4, color = "darkslategray") +
   geom_line(aes(y = gap_ma), color = "tomato", linewidth = 0.5) +
   scale_x_date(date_breaks = "1 months", date_labels = "%b") +
-  scale_y_continuous(labels = \(x) x * 100) +
+  scale_y_continuous(labels = scales::label_number(scale = 100)) +
   facet_wrap(~variant) +
   labs(x = NULL, y = "ギャップ (pp)") +
   theme_classic(base_family = "ubuntu", base_size = 13) +
