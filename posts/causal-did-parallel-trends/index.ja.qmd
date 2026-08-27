@@ -17,11 +17,11 @@ att_true <- 0.01049 # 真値ATT
 
 panel <- bind_rows(
   parallel = read_csv(
-    "../../data/causal-did-parallel-trends/panel_parallel.csv",
+    "../../data/causal-synthetic-data-design/panel_parallel.csv",
     show_col_types = FALSE
   ),
   divergent = read_csv(
-    "../../data/causal-did-parallel-trends/panel_divergent.csv",
+    "../../data/causal-synthetic-data-design/panel_divergent.csv",
     show_col_types = FALSE
   ),
   .id = "variant"
@@ -320,12 +320,8 @@ date_treat <- lubridate::ymd("2026-06-01")
 att_true <- 0.01049 # 真値ATT
 
 panel <- bind_rows(
-  parallel = read_csv(
-    "../../data/causal-did-parallel-trends/panel_parallel.csv"
-  ),
-  divergent = read_csv(
-    "../../data/causal-did-parallel-trends/panel_divergent.csv"
-  ),
+  parallel = read_csv("panel_parallel.csv"),
+  divergent = read_csv("panel_divergent.csv"),
   .id = "variant"
 )
 
