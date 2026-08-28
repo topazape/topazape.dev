@@ -2,7 +2,7 @@
 title: "Estimating the Effect with Difference-in-Differences (DiD)"
 draft: true
 draft-mode: unlinked
-date: "2026-10-20"
+date: "2026-10-07"
 categories: ["causal-inference", "statistics"]
 ---
 
