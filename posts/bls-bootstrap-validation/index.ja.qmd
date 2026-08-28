@@ -1,0 +1,365 @@
+---
+title: "デルタ法による CI の被覆確率: ブートストラップ検証とサンプルサイズ設計"
+date: "2026-07-15"
+categories: ["brand-lift", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+```
+
+[リスク比へのデルタ法](/posts/bls-delta-method-rr/)では、リスク比（risk ratio; 以後 RR） $RR = \frac{p_1}{p_0}$ に対して、対数変換とデルタ法による次の CI を導出しました。
+
+$$\left( \widehat{RR} \cdot e^{-z_{1-\alpha/2} \cdot SE}, \quad \widehat{RR} \cdot e^{+z_{1-\alpha/2} \cdot SE} \right)$$
+
+ここで $SE = \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$ です。
+
+閉じた形で書けて SQL でも計算でき、常に正の値になる区間ですが、根拠にしているのは 1 次の Taylor 近似です。ブランドリフト調査（Brand Lift Study; 以後 BLS）のキャンペーンは有限の標本サイズで実施され、ベースライン率 $p_0$ が低いこともあります。この区間は、実際にはどの程度の性能を持っているのでしょうか。
+
+本記事ではこれをシミュレーションで確かめます。比較の相手はブートストラップ（bootstrap）によるパーセンタイル信頼区間で、デルタ法が必要とする正規近似を使いません。評価する量は被覆確率（coverage）、つまり生成したデータのうち CI が真の $RR$ を含む割合です。
+
+先に結論を書くと、対照群の期待肯定回答数 $\mathbb{E}[x_0] = n \cdot p_0$ が 20 以上であれば、デルタ法の CI は名目の 95% の被覆を達成します。これを下回ると保守的な側に振れ、表示している水準に見合わないほど広い区間を返すようになります。後半では、狙ったリフトを目標の検出力で検出するために必要な、1 群あたりの最小標本サイズ $n_{\min}$ を導きます。
+
+以下では、簡単のため $n_1 = n_0 = n$ とします。
+
+## RR のブートストラップパーセンタイル信頼区間
+
+ブートストラップパーセンタイル信頼区間は、デルタ法が前提にしている正規近似を必要としません。ここで使うのはパラメトリックブートストラップで、推定した二項分布から再標本化して分位点を取ります。
+
+観測度数 $(x_1, n, x_0, n)$ に対する手順は次のとおりです。
+
+1.  $\hat{p}_1 = \frac{x_1}{n}$ と $\hat{p}_0 = \frac{x_0}{n}$ を計算します。
+2.  $b = 1, \dots, B$ について $x_1^* \sim \text{Binomial}(n, \hat{p}_1)$ と $x_0^* \sim \text{Binomial}(n, \hat{p}_0)$ を独立に生成し、$\widehat{RR}^*_b = (x_1^*/n) / (x_0^*/n)$ を計算します。ただし $x_0^* = 0$ では $\widehat{RR}^*$ が定義できず、後述の被覆シミュレーションでも観測度数のどちらかが $0$ の反復を除外するので、$x_0^* = 0$ または $x_1^* = 0$ となった複製は同じように破棄します。
+3.  $(1-\alpha)$ の CI は $\left( \widehat{RR}^*_{(\alpha/2)}, \; \widehat{RR}^*_{(1-\alpha/2)} \right)$ です。
+
+## 被覆確率のシミュレーション
+
+### RR を固定する理由
+
+シミュレーションでは $p_0$ と $n$ を動かし、$RR$ は固定します。その理由を先に述べます。
+
+$\log(\widehat{RR}) = \log(\hat{p}_1) - \log(\hat{p}_0)$ であり、2 つの項は独立です。差の正規近似がどこまで良いかは、2 つの近似のうち悪い方で決まります。
+
+$\log(\hat{p})$ に対するデルタ法の近似精度は、期待度数 $np = \mathbb{E}[x]$ に左右されます。$np$ が大きければ $\hat{p}$ はほぼ正規で、$\log(\hat{p})$ もその正規性を受け継ぎます。逆に $np$ が小さいと $\hat{p}$ は離散的で右に歪み、近似は成り立たなくなります。
+
+$n_1 = n_0 = n$ かつ $RR > 1$ なら $p_1 = RR \cdot p_0 > p_0$ なので、常に $np_1 > np_0$ です。曝露群の期待肯定回答数は必ず対照群より多く、精度が問題になるのはいつも $\log(\hat{p}_0)$ 側です。
+
+そして $\log(\hat{p}_0)$ の近似精度は $np_0$ だけで決まります。$RR$ は $p_1$ を動かしますが $p_0$ には影響しないので、$RR$ を変えても、デルタ法が名目水準から外れ始める境目は動きません。
+
+主要なシミュレーションでは、BLS のキャンペーンで典型的と思われる中程度のリフトとして $RR = 1.20$ を使います。加えて $RR = 1.50$ の条件を 1 つだけ置き、$RR$ に依存しないことを数値でも確認します。
+
+### 設計
+
+鍵になる量は $\mathbb{E}[x_0] = n \cdot p_0$ です。これがある範囲に散らばるよう、$p_0$ と $n$ の両方を動かします。
+
+| パラメータ           | 値                                      |
+|----------------------|-----------------------------------------|
+| $RR$                 | $1.20$（主要）、$1.50$（確認）          |
+| $p_0$                | $0.02, \; 0.05, \; 0.10, \; 0.20$       |
+| $n \; (= n_1 = n_0)$ | $100, \; 500, \; 2{,}000$               |
+| 反復回数             | $K = 10{,}000$                          |
+| 信頼水準             | $95\%$                                  |
+
+4 つの $p_0$ は、BLS のベースライン率の範囲を半 log 刻みで覆う値です。3 つの $n$ と組み合わせると 12 条件になり、$\mathbb{E}[x_0]$ は 2 から 400 まで 10 通りの値を取ります。
+
+|              | $n = 100$ | $n = 500$ | $n = 2{,}000$ |
+|--------------|-----------|-----------|---------------|
+| $p_0 = 0.02$ | 2         | 10        | 40            |
+| $p_0 = 0.05$ | 5         | 25        | 100           |
+| $p_0 = 0.10$ | 10        | 50        | 200           |
+| $p_0 = 0.20$ | 20        | 100       | 400           |
+
+このうち $(0.02,\, 500)$ と $(0.10,\, 100)$ は $\mathbb{E}[x_0] = 10$ で、$(0.05,\, 2{,}000)$ と $(0.20,\, 500)$ は $\mathbb{E}[x_0] = 100$ で一致しています。被覆確率が $\mathbb{E}[x_0]$ だけで決まるかどうかは、この 2 組を比べれば確認できます。
+
+各反復では真のパラメータから $x_1 \sim \text{Binomial}(n, p_1)$ と $x_0 \sim \text{Binomial}(n, p_0)$ を生成し、2 つの CI を計算して、それぞれが真の $RR$ を含むかどうかを記録します。どちらかの度数が $0$ になった反復は除外します。
+
+### 結果
+
+```{r}
+#| label: sim-functions
+#| include: false
+
+bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  rr <- p1 / p0
+  se_log <- sqrt(1 / x1 - 1 / n1 + 1 / x0 - 1 / n0)
+  z <- qnorm(1 - alpha / 2)
+  exp(log(rr) + c(-1, 1) * z * se_log)
+}
+
+bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 5000, alpha = 0.05) {
+  p1_hat <- x1 / n1
+  p0_hat <- x0 / n0
+  x1_star <- rbinom(B, n1, p1_hat)
+  x0_star <- rbinom(B, n0, p0_hat)
+  
+  valid <- x0_star > 0 & x1_star > 0
+  if (sum(valid) < 100) {
+    return(c(NA, NA))
+  }
+  
+  rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
+  
+  quantile(rr_star, c(alpha / 2, 1 - alpha / 2), names = FALSE)
+}
+
+coverage_sim <- function(p0, rr, n, K = 10000, B = 5000, alpha = 0.05) {
+  p1 <- rr * p0
+  true_rr <- rr
+  
+  dm_cover <- 0L
+  bs_cover <- 0L
+  valid_dm <- 0L
+  valid_bs <- 0L
+  
+  for (k in seq_len(K)) {
+    x1 <- rbinom(1, n, p1)
+    x0 <- rbinom(1, n, p0)
+    
+    if (x1 == 0 || x0 == 0) {
+      next
+    }
+    
+    dm_ci <- bls_rr_ci(x1, n, x0, n, alpha)
+    valid_dm <- valid_dm + 1L
+    dm_cover <- dm_cover + (dm_ci[1] <= true_rr & true_rr <= dm_ci[2])
+    
+    bs_ci <- bls_bootstrap_ci(x1, n, x0, n, B, alpha)
+    if (!anyNA(bs_ci)) {
+      valid_bs <- valid_bs + 1L
+      bs_cover <- bs_cover + (bs_ci[1] <= true_rr & true_rr <= bs_ci[2])
+    }
+  }
+  
+  tibble(
+    p0 = p0,
+    rr = rr,
+    n = n,
+    ex0 = n * p0,
+    dm_coverage = dm_cover / valid_dm,
+    bs_coverage = bs_cover / valid_bs,
+    valid_dm = valid_dm,
+    valid_bs = valid_bs
+  )
+}
+```
+
+```{r}
+#| label: run-sim
+#| include: false
+#| cache: true
+
+set.seed(2026)
+
+grid <- crossing(
+  p0 = c(0.02, 0.05, 0.10, 0.20),
+  n = c(100, 500, 2000),
+  rr = c(1.20, 1.50)
+) |>
+  filter(rr == 1.20 | (p0 == 0.05 & n == 100))
+
+results <- grid |>
+  pmap_dfr(
+    \(p0, n, rr) coverage_sim(p0, rr, n)
+  ) |>
+  arrange(ex0)
+```
+
+```{r}
+#| label: tbl-coverage
+#| tbl-cap: "条件別に見た 95% CI の被覆確率。どちらの方法も $K = 10,000$ 回の反復で真の $RR$ に対して評価している。"
+#| echo: false
+#| message: false
+
+results |>
+  select(p0, n, rr, ex0, dm_coverage, bs_coverage) |>
+  gt::gt() |>
+  gt::fmt_number(columns = c(p0, rr), decimals = 2) |>
+  gt::fmt_integer(columns = c(n, ex0)) |>
+  gt::fmt_percent(columns = c(dm_coverage, bs_coverage), decimals = 1) |>
+  gt::cols_label(
+    p0 = gt::md("$p_0$"),
+    n  = gt::md("$n$"),
+    rr = gt::md("$RR$"),
+    ex0 = gt::md("$\\mathbb{E}[x_0]$"),
+    dm_coverage = "Delta method",
+    bs_coverage = "Bootstrap"
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+```{r}
+#| label: fig-coverage
+#| fig-cap: "$E[x_0]$ に対する 95% CI の被覆確率。破線は名目の 95%。$E[x_0]$ が小さいと両方の方法が過剰に被覆し、その度合いはデルタ法の方が大きい。"
+#| echo: false
+#| message: false
+
+cov_long <- results |>
+  filter(rr == 1.20) |>
+  select(ex0, `Delta method` = dm_coverage, Bootstrap = bs_coverage) |>
+  pivot_longer(-ex0, names_to = "method", values_to = "coverage") |>
+  mutate(method = fct_inorder(method))
+
+ggplot(cov_long, aes(x = ex0, y = coverage, color = method, shape = method)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_point(size = 2.5) +
+  geom_line(
+    data = cov_long |> summarise(coverage = mean(coverage), .by = c(ex0, method)),
+    aes(x = ex0, y = coverage)
+  ) +
+  scale_x_log10(breaks = c(2, 5, 10, 20, 50, 100, 200, 400)) +
+  scale_y_continuous(
+    labels = scales::label_percent(accuracy = 0.1),
+    limits = c(0.93, 1.0)
+  ) +
+  labs(x = expression(E(x[0])), y = "Coverage", colour = NULL, shape = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top")
+```
+
+@fig-coverage と @tbl-coverage から読み取れることは、はっきりしています。
+
+$\mathbb{E}[x_0]$ が大きい領域では、2 つの方法は一致します。$\mathbb{E}[x_0] \geq 50$ ではどちらも 95% から 1 パーセントポイント程度の範囲に収まり、デルタ法の CI は表示どおりに機能しています。
+
+$\mathbb{E}[x_0]$ が小さい領域では、デルタ法が過剰に被覆します。$\mathbb{E}[x_0] \approx 20$ を下回ると両方の被覆確率が 95% を超え、上がり方はデルタ法の方が速いです。$\mathbb{E}[x_0] = 5$ で 97.5% 程度、$\mathbb{E}[x_0] = 2$ では 99% を超えます。
+
+原因は $SE = \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$ の $\frac{1}{x_0}$ の項です。$x_0$ が 1、2、3 といった値になるとこの項が支配的になって SE を膨らませ、表示している水準に見合わないほど広い区間ができます。少なくとも 95% の確率で真値を含むという意味では妥当な CI ですが、保守的であり、表示上の 95% は実際の被覆確率を表していません。
+
+$RR$ に依存しないことも確認できました。$\mathbb{E}[x_0] = 5$ における $RR = 1.50$ の条件の被覆確率は、$RR = 1.20$ とほぼ同じで、予測どおりです。
+
+$\mathbb{E}[x_0]$ だけで決まるという点も同様です。$\mathbb{E}[x_0] = 10$ と $100$ の重複する組（それぞれ異なる 2 つの $(p_0, n)$ から得られるもの）の被覆確率の差は 1 パーセントポイント未満で、$\mathbb{E}[x_0]$ が主要な決定要因になっています。
+
+## 最小標本サイズ
+
+デルタ法の CI は、$\mathbb{E}[x_0]$ が十分に大きければ信頼できます。ここから先の実務上の問いは、狙ったリフトを検出するのに 1 群あたり何人の回答者が必要かです。
+
+### CI から検出力へ
+
+リフトが検出されるのは CI の下限が $1$ を超えるときで、対数スケールでは次の条件になります。
+
+$$\log(\widehat{RR}) - z_{1-\alpha/2} \cdot SE > 0$$
+
+真の $RR$ の下で $\log(\widehat{RR})$ は近似的に $N(\log(RR), \; SE^2)$ に従うので、検出力は検出される確率として書けます。
+
+$$\text{Power} = P\!\left(\log(\widehat{RR}) > z_{1-\alpha/2} \cdot SE\right) = \Phi\!\left(\frac{\log(RR)}{SE} - z_{1-\alpha/2}\right)$$
+
+検出力を $1 - \beta$ とおいて解くと
+
+$$\frac{\log(RR)}{SE} = z_{1-\alpha/2} + z_{1-\beta}$$
+
+が得られます。
+
+
+### $n_{\min}$ の導出
+
+$n_1 = n_0 = n$ として、$\log(RR) = (z_{1-\alpha/2} + z_{1-\beta}) \cdot SE$ と $SE^2 = \frac{1-p_1}{n\,p_1} + \frac{1-p_0}{n\,p_0}$ から $n$ について解きます。
+
+$$n_{\min} = \left\lceil \frac{(z_{1-\alpha/2} + z_{1-\beta})^2}{[\log(RR)]^2}\left[\frac{1-p_1}{p_1} + \frac{1-p_0}{p_0}\right] \right\rceil$$
+
+$p_1 = RR \cdot p_0$ なので、必要な入力は $p_0$、$RR$、$\alpha$、検出力 $(1-\beta)$ の 4 つです。
+
+
+### 数値例
+
+過去の調査の水準から $p_0 = 0.10$、$RR = 1.20$（相対リフト 20%）を設計値に取り、$\alpha = 0.05$ で検出力 80% を目標とします。このとき $p_1 = 0.12$、$z_{0.975} = 1.96$、$z_{0.80} = 0.842$ なので、
+
+$$n_{\min} = \left\lceil \frac{(1.96 + 0.842)^2}{[\log(1.20)]^2}\left[\frac{1-0.12}{0.12} + \frac{1-0.10}{0.10}\right] \right\rceil = \left\lceil \frac{7.849}{0.03324} \times 16.333 \right\rceil = \left\lceil 236.1 \times 16.333 \right\rceil = 3{,}857$$
+
+となります。相対リフト 20% を検出力 80% で検出するには、1 群あたり 3,900 人程度の回答者が必要ということです。
+
+$p_0$ と $RR$ は設計時の仮定で、通常は過去の水準から置きます。実際の値がここから外れれば、実現する検出力も変わります。
+
+
+### $n_{\min}$ の参照表
+
+```{r}
+#| label: fun-nmin
+#| include: false
+
+bls_nmin <- function(p0, rr, alpha = 0.05, power = 0.80) {
+  p1 <- rr * p0
+  z_alpha <- qnorm(1 - alpha / 2)
+  z_beta <- qnorm(power)
+  ceiling(
+    (z_alpha + z_beta)^2 / log(rr)^2
+    * ((1 - p1) / p1 + (1 - p0) / p0)
+  )
+}
+```
+
+```{r}
+#| label: tbl-nmin
+#| tbl-cap: "$\\alpha = 0.05$、検出力 80% でリフトを検出するために必要な 1 群あたりの回答者数（$n_{\\min}$）。"
+#| echo: false
+#| message: false
+
+nmin_grid <- crossing(
+  p0 = c(0.05, 0.10, 0.20),
+  rr = c(1.10, 1.20, 1.50)
+) |>
+  mutate(n_min = map2_int(p0, rr, \(p0, rr) bls_nmin(p0, rr)))
+
+nmin_grid |>
+  gt::gt() |>
+  gt::fmt_number(columns = p0, decimals = 2) |>
+  gt::fmt_number(columns = rr, decimals = 2) |>
+  gt::fmt_integer(columns = n_min) |>
+  gt::cols_label(
+    p0 = gt::md("$p_0$"),
+    rr = gt::md("$RR$"),
+    n_min = gt::md("$n_{\\min}$")
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+
+## R コード
+
+``` r
+bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  rr <- p1 / p0
+
+  se_log <- sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  z <- qnorm(1 - alpha / 2)
+  exp(log(rr) + c(-1, 1) * z * se_log)
+}
+
+bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 10000, alpha = 0.05) {
+  p1_hat <- x1 / n1
+  p0_hat <- x0 / n0
+  x1_star <- rbinom(B, n1, p1_hat)
+  x0_star <- rbinom(B, n0, p0_hat)
+
+  # x0* = 0（RR が定義できない）または x1* = 0 の複製は破棄する
+  valid <- x0_star > 0 & x1_star > 0
+  rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
+  quantile(rr_star, c(alpha / 2, 1 - alpha / 2))
+}
+
+bls_nmin <- function(p0, rr, alpha = 0.05, power = 0.80) {
+  p1 <- rr * p0
+  z_alpha <- qnorm(1 - alpha / 2)
+  z_beta <- qnorm(power)
+  ceiling(
+    (z_alpha + z_beta)^2 / log(rr)^2
+    * ((1 - p1) / p1 + (1 - p0) / p0)
+  )
+}
+
+bls_rr_ci(105, 500, 70, 500)
+# [1] 1.138381 1.976491
+
+bls_bootstrap_ci(105, 500, 70, 500)
+#     2.5%    97.5%
+# 1.146667 1.984854
+
+bls_nmin(p0 = 0.10, rr = 1.20)
+# [1] 3857
+```

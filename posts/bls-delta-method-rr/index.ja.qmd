@@ -1,0 +1,293 @@
+---
+title: "ブランドリフトの信頼区間: リスク比へのデルタ法"
+date: "2026-07-01"
+categories: ["brand-lift", "statistics"]
+---
+
+ブランドリフト調査（Brand Lift Study; 以後 BLS）は、広告に接触したグループ（曝露群）と接触していないグループ（対照群）へ同じアンケートを実施し、その結果の差（リフト値）からブランド認知度や好意度などの「態度変容」を測定する手法です。アンケートが選択式であった場合、BLS を実施する側にとって肯定的な選択肢を選んだ割合を肯定回答率と呼ぶことにします。曝露群と対照群の肯定回答率を $p_1$、$p_0$ とすると、リスク比（risk ratio; 以後 RR） $RR = \frac{p_1}{p_0}$ は、広告への曝露が人々の態度をどれだけ動かしたかを直接的に表す指標の一つになります。例えば、$RR = 1.12$ は、曝露群の肯定回答が対照群より 12% 多いことを意味します。プラットフォームによっては $RR - 1$ を「相対リフト」として報告していますが、2 つの二項比率の比であることは変わりません。
+
+$p_1$ と $p_0$ の両方の標本変動を織り込んだ $RR$ の信頼区間（confidence interval; 以後 CI）を構成しているプラットフォームは、主要なところでは見当たりません。Google Ads と DV360 は絶対リフト $(p_1 - p_0)$ に対して CI を構成しており、両側の水準は Google Ads が 80%、DV360 が 90% です。どちらも、絶対リフトを $p_0$ で割った量を相対リフトとして定義しているようです（[Andrews 2020](https://medium.com/@juancristbalandrews/googles-brand-lift-missing-pieces-5f05c7dd2b59)）。この除算の段階で $p_0$ の不確実性が無視されるため、得られる相対リフトの CI は実際よりも狭くなる傾向にあります。また、Meta はベイズの枠組みを用いており、事後確率を報告しています。
+
+$RR$ に対して適切な CI を構成することが難しいのは、標本比率を別の標本比率で割ると、標本分布が非対称で下限が $0$ となり、分散が $p_1$ と $p_0$ の両方に非線形に依存するためです。
+
+本記事では、デルタ法（delta method）を用いて $RR$ の CI を順を追って構成します。
+
+## 設定
+
+BLS のキャンペーンから得られるデータは、次の 2×2 表の形にまとめられます。
+
+|        | 肯定  | 否定        | 合計  |
+|--------|-------|-------------|-------|
+| 曝露群 | $x_1$ | $n_1 - x_1$ | $n_1$ |
+| 対照群 | $x_0$ | $n_0 - x_0$ | $n_0$ |
+
+肯定回答率は
+
+$$\hat{p}_1 = \frac{x_1}{n_1}, \quad \hat{p}_0 = \frac{x_0}{n_0}$$
+
+であり、リスク比は
+
+$$\widehat{RR} = \frac{\hat{p}_1}{\hat{p}_0}$$
+
+です。$\hat{p}_1$ と $\hat{p}_0$ はいずれも二項分布から得られる標本比率なので、その分散は次のようになります。
+
+$$\text{Var}(\hat{p}_1) = \frac{p_1(1 - p_1)}{n_1}, \quad \text{Var}(\hat{p}_0) = \frac{p_0(1 - p_0)}{n_0}$$
+
+曝露群と対照群は独立に無作為化されているため、$\hat{p}_1$ と $\hat{p}_0$ も独立です。
+
+## 素朴な方法: RR に直接デルタ法を適用する
+
+デルタ法は、$\hat{\theta}$ が $\theta$ の漸近正規な推定量であるとき、微分可能な関数 $g$ について
+
+$$\text{Var}(g(\hat{\theta})) \approx \left[ g'(\theta) \right]^2 \text{Var}(\hat{\theta})$$
+
+が成り立つことを述べています。これは、$g$ を $\theta$ の周りで 1 次の Taylor 展開した
+
+$$g(\hat{\theta}) \approx g(\theta) + g'(\theta)(\hat{\theta} - \theta)$$
+
+から得られます。右辺の第 1 項は定数なので、右辺の分散は $[g'(\theta)]^2 \, \text{Var}(\hat{\theta})$ になります。
+
+2 変数関数 $g(p_1, p_0) = \frac{p_1}{p_0}$ でも同じ議論が使えます。$(p_1, p_0)$ の周りでの 1 次の Taylor 展開は
+
+$$g(\hat{p}_1, \hat{p}_0) \approx g(p_1, p_0) + \frac{\partial g}{\partial p_1}(\hat{p}_1 - p_1) + \frac{\partial g}{\partial p_0}(\hat{p}_0 - p_0)$$
+
+です。ここから定数 $g(p_1, p_0)$ を除いた部分は、$a = \frac{\partial g}{\partial p_1}$、$b = \frac{\partial g}{\partial p_0}$、$U = \hat{p}_1 - p_1$、$V = \hat{p}_0 - p_0$ とおけば線形結合 $aU + bV$ にほかなりません。線形結合の分散は
+
+$$\text{Var}(aU + bV) = a^2 \text{Var}(U) + b^2 \text{Var}(V) + 2ab\,\text{Cov}(U, V)$$
+
+なので、
+
+$$\text{Var}(\widehat{RR}) \approx \left(\frac{\partial g}{\partial p_1}\right)^2 \text{Var}(\hat{p}_1) + \left(\frac{\partial g}{\partial p_0}\right)^2 \text{Var}(\hat{p}_0) + 2 \frac{\partial g}{\partial p_1} \frac{\partial g}{\partial p_0} \text{Cov}(\hat{p}_1, \hat{p}_0)$$
+
+が得られます。$\hat{p}_1$ と $\hat{p}_0$ は独立なので $\text{Cov}(\hat{p}_1, \hat{p}_0) = 0$ となり、交差項は落ちます。
+
+$$\text{Var}(\widehat{RR}) \approx \left(\frac{\partial g}{\partial p_1}\right)^2 \text{Var}(\hat{p}_1) + \left(\frac{\partial g}{\partial p_0}\right)^2 \text{Var}(\hat{p}_0)$$
+
+偏微分は
+
+$$\frac{\partial}{\partial p_1}\left(\frac{p_1}{p_0}\right) = \frac{1}{p_0}, \quad \frac{\partial}{\partial p_0}\left(\frac{p_1}{p_0}\right) = -\frac{p_1}{p_0^2}$$
+
+なので、これを代入すると
+
+$$\text{Var}(\widehat{RR}) \approx \frac{1}{p_0^2} \cdot \frac{p_1(1-p_1)}{n_1} + \frac{p_1^2}{p_0^4} \cdot \frac{p_0(1-p_0)}{n_0}$$
+
+となり、整理すれば次の形になります。
+
+$$\text{Var}(\widehat{RR}) \approx RR^2 \left[ \frac{1-p_1}{n_1 p_1} + \frac{1-p_0}{n_0 p_0} \right]$$
+
+中心極限定理より $\hat{p}_1$ と $\hat{p}_0$ は漸近正規で、デルタ法は漸近正規性を保つので $\widehat{RR}$ も漸近正規です。したがって、標準的な Wald 区間
+
+$$\widehat{RR} \pm 1.96 \times \sqrt{\text{Var}(\widehat{RR})}$$
+
+が使えます。
+
+1 次近似としてはこれで妥当ですが、区間が $\widehat{RR}$ を中心に左右対称になるという構造的な問題が残ります。$RR$ は下限が $0$ で標本分布が右に歪んでいるため、対称な区間では次のようなことが起こります。
+
+- 下限が負になり得ます。確率の比としては取り得ない値です。
+
+<!-- -->
+
+- 点推定値が大きいときに真の $RR$ が存在しやすい右の裾で、被覆確率が名目の水準を下回ります。
+
+
+## log(RR) へのデルタ法
+
+$RR$ ではなく $\log(RR)$ にデルタ法を適用すると、この 2 点はどちらも解消します。$\log$ は $(0, \infty)$ を $(-\infty, \infty)$ へ写すので、対数スケールで対称な区間を作って指数変換で戻せば、元のスケールでは非対称で、決して負にならない区間が得られます。
+
+出発点は
+
+$$\log(\widehat{RR}) = \log(\hat{p}_1) - \log(\hat{p}_0)$$
+
+です。$\hat{p}_1$ と $\hat{p}_0$ は独立なので、差の分散は分散の和になります。
+
+$$\text{Var}(\log(\widehat{RR})) = \text{Var}(\log(\hat{p}_1)) + \text{Var}(\log(\hat{p}_0))$$
+
+各項には 1 変数のデルタ法をそのまま使えます。$g(p) = \log(p)$ では $g'(p) = 1/p$ なので、
+
+$$\text{Var}(\log(\hat{p}_1)) \approx \frac{1}{p_1^2} \cdot \frac{p_1(1 - p_1)}{n_1} = \frac{1 - p_1}{n_1 \, p_1}$$
+
+$$\text{Var}(\log(\hat{p}_0)) \approx \frac{1}{p_0^2} \cdot \frac{p_0(1 - p_0)}{n_0} = \frac{1 - p_0}{n_0 \, p_0}$$
+
+となり、
+
+$$\text{Var}(\log(\widehat{RR})) \approx \frac{1 - p_1}{n_1 \, p_1} + \frac{1 - p_0}{n_0 \, p_0}$$
+
+が得られます。標本推定値 $\hat{p}_1$、$\hat{p}_0$ を代入すれば
+
+$$\text{Var}(\log(\widehat{RR})) = \frac{1 - \hat{p}_1}{n_1 \, \hat{p}_1} + \frac{1 - \hat{p}_0}{n_0 \, \hat{p}_0}$$
+
+で、セル度数で書き直すと同じものが次の形になります。
+
+$$\text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$$
+
+この式は以降の導出でも繰り返し登場します。各項の出どころも明確で、$\frac{1}{x}$ は $\log(p)$ へのデルタ法から、$-\frac{1}{n}$ は総数の寄与を差し引く分から来ています。
+
+## 信頼区間の構成
+
+$\log(\hat{p}_1)$ と $\log(\hat{p}_0)$ は、漸近正規な推定量にデルタ法を適用したものなのでそれぞれ漸近正規で、その差 $\log(\widehat{RR})$ も漸近正規です。$\log(RR)$ の $(1 - \alpha)$ 信頼区間は
+
+$$\log(\widehat{RR}) \pm z_{1-\alpha/2} \times \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$$
+
+となり、両端を指数変換すると $RR$ の信頼区間
+
+$$\left( \widehat{RR} \cdot \exp\left(-z_{1-\alpha/2} \times SE \right), \quad \widehat{RR} \cdot \exp\left(+z_{1-\alpha/2} \times SE \right) \right)$$
+
+が得られます。ここで $SE = \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$ です。
+
+この区間には次の性質があります。
+
+- 常に正です。
+
+  実数の指数関数が負になることはありません。
+
+- $\widehat{RR}$ を中心に非対称です。
+
+  比の標本分布が右に歪んでいることを反映して、上側の裾が下側より広くなります。
+
+- 反転に対して同変（equivariant）です。
+
+  曝露群と対照群を入れ替えると、$\frac{1}{RR}$ の区間は元の区間の逆数になります。素朴な対称の CI にはこの性質がありません。
+
+## 数値例
+
+BLS のキャンペーンから次のデータが得られたとします。
+
+|        | 肯定 | 否定 | 合計 |
+|--------|------|------|------|
+| 曝露群 | 105  | 395  | 500  |
+| 対照群 | 70   | 430  | 500  |
+
+このとき
+
+$$\hat{p}_1 = 0.210, \quad \hat{p}_0 = 0.140, \quad \widehat{RR} = \frac{0.210}{0.140} = 1.500$$
+
+なので、プラットフォームは「相対リフト」50% と報告することになります。
+
+**対数変換による CI（デルタ法）**
+
+$$SE = \sqrt{\frac{1}{105} - \frac{1}{500} + \frac{1}{70} - \frac{1}{500}} = \sqrt{0.007524 + 0.012286} = \sqrt{0.019810} = 0.14075$$
+
+$$\log(\widehat{RR}) = \log(1.500) = 0.40546$$
+
+なので、$\log(RR)$ の 95% CI は
+
+$$0.40546 \pm 1.96 \times 0.14075 = (0.12959, \; 0.68133)$$
+
+となり、指数変換して $RR$ のスケールに戻すと
+
+$$(e^{0.12959}, \; e^{0.68133}) = (1.138, \; 1.977)$$
+
+です。区間は $1$ を含まないので、リフトは 5% 水準で統計的に有意です。「相対リフト」50% の 95% CI は、およそ (13.8%, 97.7%) ということになります。
+
+**素朴な対称の CI（比較のため）**
+
+$$\text{Var}(\widehat{RR}) = 1.500^2 \times \left[\frac{1-0.210}{500 \times 0.210} + \frac{1-0.140}{500 \times 0.140}\right] = 2.25 \times (0.007524 + 0.012286) = 0.044573$$
+
+$$SE_{naive} = \sqrt{0.044573} = 0.21112$$
+
+なので、95% CI は
+
+$$1.500 \pm 1.96 \times 0.21112 = (1.086, \; 1.914)$$
+
+です。
+
+どちらの区間も $1$ を含みませんが、形が違います。素朴な CI は左右どちらにも $0.414$ 伸びているのに対し、対数変換による CI は $\widehat{RR}$ から下に $0.362$、上に $0.477$ 伸びていて、右に歪んだ標本分布とよく対応しています。この違いは $n$ が小さいほど、また $\widehat{RR}$ が大きいほど顕著になります。
+
+```{r}
+#| label: fig-ci-comparison
+#| fig-cap: "RR の 95% 信頼区間。対数変換による非対称な区間と、素朴な対称の区間の比較。"
+#| echo: false
+#| message: false
+library(tidyverse)
+
+tribble(
+  ~method,              ~rr,   ~lower, ~upper,
+  "Log-transform",      1.500, 1.138,  1.977,
+  "Naive (symmetric)",  1.500, 1.086,  1.914
+) |>
+  mutate(method = fct_inorder(method) |> fct_rev()) |>
+  ggplot(aes(x = rr, y = method, xmin = lower, xmax = upper, color = method)) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +
+  geom_pointrange() +
+  scale_x_continuous(breaks = scales::breaks_width(0.25)) +
+  labs(x = "Risk Ratio", y = NULL) +
+  theme_classic(
+    base_family = "ubuntu",
+    base_size = 13,
+  ) +
+  theme(legend.position = "none")
+```
+
+
+## 2 つの方法に差が出る場面
+
+差が最も大きくなるのは、ベースライン率 $p_0$ が低い場合です。対照群の肯定回答数が少ないと $\hat{p}_0$ が不安定になり、$\widehat{RR}$ の標本分布は正規分布ではうまく近似できなくなります。素朴な CI はこれを反映できませんが、対数変換による CI は構成上非対称なので反映できます。
+
+もっとも、対数変換による CI も漸近的な方法です。$\log(\hat{p})$ の正規近似が成り立つだけの大きさが $x_1$ と $x_0$ に必要で、対照群の期待肯定回答数 $\mathbb{E}[x_0] = n \cdot p_0$ が小さいときは SE の式の $1/x_0$ の項が支配的になり、CI は表示している信頼水準に見合わないほど広くなります。
+
+
+## R コード
+
+``` r
+bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  rr <- p1 / p0
+
+  # 対数変換による CI（デルタ法）
+  se_log <- sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  z <- qnorm(1 - alpha / 2)
+  ci_log <- exp(log(rr) + c(-1, 1) * z * se_log)
+
+  # 素朴な対称の CI
+  var_rr <- rr^2 * ((1 - p1) / (n1 * p1) + (1 - p0) / (n0 * p0))
+  ci_naive <- rr + c(-1, 1) * z * sqrt(var_rr)
+
+  list(
+    rr = rr,
+    log_transform = ci_log,
+    naive = ci_naive
+  )
+}
+
+bls_rr_ci(105, 500, 70, 500)
+
+# $rr
+# [1] 1.5
+#
+# $log_transform
+# [1] 1.138381 1.976491
+#
+# $naive
+# [1] 1.086213 1.913787
+```
+
+## SQL（BigQuery）
+
+同じ計算は SQL でも書けます。UDF は必要ありません。BLS の結果がキャンペーンごとのセル度数に集計されていれば、CI は 1 つのクエリで求まります。
+
+``` sql
+with bls as (
+  select
+    study_id,
+    x1,  -- 曝露群の肯定回答数
+    n1,  -- 曝露群の合計
+    x0,  -- 対照群の肯定回答数
+    n0   -- 対照群の合計
+  from bls_results
+)
+
+select
+  study_id,
+  (x1 / n1) / (x0 / n0) as rr,
+  exp(
+    ln((x1 / n1) / (x0 / n0))
+    - 1.96 * sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  ) as ci_lower,
+  exp(
+    ln((x1 / n1) / (x0 / n0))
+    + 1.96 * sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  ) as ci_upper
+from bls
+where x1 > 0 and x0 > 0  -- 0 では対数が定義されない
+```

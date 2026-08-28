@@ -1,0 +1,500 @@
+---
+title: "リスク比に対する Fieller の信頼区間: Taylor 近似を使わない区間推定"
+date: "2026-07-29"
+categories: ["brand-lift", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+```
+
+[ブートストラップによる被覆確率の検証](/posts/bls-bootstrap-validation/)では、リスク比（risk ratio; 以後 RR）に対する対数変換デルタ法の信頼区間（confidence interval; 以後 CI）が、対照群の期待肯定回答数 $\mathbb{E}[x_0] = n \cdot p_0$ が 20 以上のときに名目の 95% の被覆を達成することを確認しました。20 を下回るとデルタ法は保守的な側に振れ、SE の式の $\frac{1}{x_0}$ の項が、区間を表示上の信頼水準に見合わないほど広げます。一方、Taylor 近似に依存しないブートストラップパーセンタイル信頼区間は、全範囲で名目水準に近い被覆を保っていました。
+
+それなら全部ブートストラップで済ませればよいのではないか、という話になります。ただ、ブートストラップは閉じた形で書けません。調査ごとにシミュレーションのループが必要になるので SQL では実装できず、バッチ処理では計算コストもかかります。サンプルサイズの計算やメタアナリシスの重み付けに使う、閉じた形の分散式も得られません。そこで本記事では 3 つ目の方法として、Taylor 近似を外しながら閉じた形と SQL での計算可能性を保つ Fieller の信頼区間（Fieller 1954）を導入します。
+
+以下では $n_1 = n_0 = n$ とします。
+
+
+## 3 つの方法
+
+導出に入る前に、各方法が何を返してくれるのかを整理しておきます。
+
+|                                      | デルタ法                  | Fieller          | ブートストラップ                   |
+|--------------------------------------|---------------------------|------------------|------------------------------------|
+| 近似の層                             | 中心極限定理 + Taylor 展開 | 中心極限定理のみ | なし（再標本化）                   |
+| 出力                                 | CI と閉じた形の分散式     | CI のみ          | CI と分散の推定値                  |
+| SQL での実装                         | 可                        | 可               | 不可（シミュレーションのループ）   |
+| 計算コスト                           | 調査あたり $O(1)$         | 調査あたり $O(1)$ | 調査あたり $O(B)$                 |
+| $\mathbb{E}[x_0]$ が小さいときの被覆 | 過剰被覆                  | ほぼ名目どおり   | ほぼ名目どおり                     |
+| データ不足の検知                     | なし（常に有限の CI を返す） | 非有界な CI を返す | なし（常に有限の CI を返す）    |
+| 下流で使える閉じた形の分散           | あり                      | なし             | なし                               |
+
+決定的な差は、閉じた形の分散式の有無です。[リスク比へのデルタ法](/posts/bls-delta-method-rr/)では $\text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$ を導出し、[ブートストラップによる被覆確率の検証](/posts/bls-bootstrap-validation/)ではこれを $n$ について解いて $n_{\min}$ を求めました。メタアナリシスでも各調査の重みは $w_k = 1/\text{Var}(\log(\widehat{RR}_k))$ です。この式をセル度数の代数式として与えられるのはデルタ法だけで、ブートストラップは分散を数値的に推定できても $n$ の関数として書けないため解き直せず、Fieller はそもそも分散を返しません。比の信頼区間についてのより広い議論と、Fieller の定理の幾何的な解釈は [Franz (2007)](https://arxiv.org/abs/0710.2024) にあります。3 つの方法は相補的で、$\mathbb{E}[x_0] \geq 20$ ではどれもほぼ同じ CI を与えるためデルタ法だけで用が足ります。方法の選択が問題になるのは、この閾値を下回るときです。
+
+
+## Fieller の定理
+
+デルタ法の CI は、Taylor 展開で $\text{Var}(\widehat{RR})$ を近似し、そこから Wald 区間を作るという手順でした。Fieller の考え方は違います。比の分散を近似する代わりに、$RR$ の候補値ごとに仮説検定を反転させます。
+
+CI は、検定 $H_0: RR = \theta$ が水準 $\alpha$ で棄却されない $\theta$ の集合として定義されます。
+
+$$\text{CI} = \bigl\{\theta : H_0\!: RR = \theta \text{ が水準 } \alpha \text{ で棄却されない} \bigr\}$$
+
+$H_0$ の下では $p_1 = \theta \, p_0$ なので、$\hat{p}_1 - \theta \hat{p}_0$ の平均は $0$ になります。$\hat{p}_1$ と $\hat{p}_0$ は独立（本シリーズを通じて置いているのと同じ仮定）なので、差の分散は和になります。
+
+$$\text{Var}(\hat{p}_1 - \theta \hat{p}_0) = \text{Var}(\hat{p}_1) + \theta^2 \, \text{Var}(\hat{p}_0)$$
+
+プラグインの分散推定値 $V_1 = \frac{\hat{p}_1(1-\hat{p}_1)}{n}$、$V_0 = \frac{\hat{p}_0(1-\hat{p}_0)}{n}$ を代入すると、検定統計量は
+
+$$T(\theta) = \frac{(\hat{p}_1 - \theta \hat{p}_0)^2}{V_1 + \theta^2 V_0}$$
+
+です。これを $z^2 = z_{1-\alpha/2}^2$ と比べます。CI は $T(\theta) \leq z^2$ を満たす $\theta$ の全体なので、書き換えると
+
+$$(\hat{p}_1 - \theta \hat{p}_0)^2 \leq z^2(V_1 + \theta^2 V_0)$$
+
+となります。左辺を展開して $\theta$ について整理すると
+
+$$\hat{p}_1^2 - 2\theta \hat{p}_1 \hat{p}_0 + \theta^2 \hat{p}_0^2 \leq z^2 V_1 + z^2 \theta^2 V_0$$
+
+$$\theta^2(\hat{p}_0^2 - z^2 V_0) - 2\theta \hat{p}_1 \hat{p}_0 + (\hat{p}_1^2 - z^2 V_1) \leq 0$$
+
+となり、これは
+
+$$a = \hat{p}_0^2 - z^2 V_0, \quad b = \hat{p}_1 \hat{p}_0, \quad c = \hat{p}_1^2 - z^2 V_1$$
+
+を係数とする 2 次不等式 $a\theta^2 - 2b\theta + c \leq 0$ です。$a > 0$ かつ判別式 $D = b^2 - ac$ が正であれば 2 つの実根を持ち、CI はその間の閉区間になります。
+
+$$\text{CI}_{\text{Fieller}} = \left[\frac{b - \sqrt{D}}{a}, \; \frac{b + \sqrt{D}}{a}\right]$$
+
+この導出のどこにも Taylor 展開は出てきません。近似は中心極限定理だけで、$\hat{p}_1$ と $\hat{p}_0$ を正規分布として扱う点はデルタ法と同じです。比を線形化する代わりに、2 次方程式を解いているわけです。
+
+### 区間が有界になる条件
+
+有界になるのは $a > 0$ のときです。原理的には $D > 0$ も必要ですが、$D = z^2 (V_1 a + \hat{p}_1^2 V_0) > 0$ なので $a > 0$ から従います。展開すると
+
+$$\hat{p}_0^2 > z^2 \frac{\hat{p}_0(1 - \hat{p}_0)}{n} \quad \Longleftrightarrow \quad n \hat{p}_0 > z^2(1 - \hat{p}_0) \quad \Longleftrightarrow \quad x_0 > z^2(1 - \hat{p}_0)$$
+
+となり、95% CI（$z^2 = 3.84$）で $\hat{p}_0$ が小さい場合は、おおよそ $x_0 \geq 4$ という条件になります。
+
+$a \leq 0$ は、対照群の肯定回答数が少なすぎて、その率を $0$ と区別できない状態です。データが $RR$ を絞り込めないので CI は非有界になります。この場合は CI を報告せず、検出力不足の調査として扱います。
+
+デルタ法はこの状態を知らせてくれません。データが裏付けているかどうかに関わらず、$x_0 \geq 1$ であれば有限の CI を返します。その帰結は[ブートストラップによる被覆確率の検証](/posts/bls-bootstrap-validation/)で見たとおりで、$\mathbb{E}[x_0] = 2$ でのデルタ法の被覆確率は 99% を超えます。95% CI としては広すぎる、ということです。
+
+### デルタ法との漸近的な一致
+
+$n$ が大きくなると $V_0$ と $V_1$ は $0$ に近づき、$a \to \hat{p}_0^2$、$c \to \hat{p}_1^2$ となるので、Fieller の CI の中心は $b/a \to \hat{p}_1/\hat{p}_0 = \widehat{RR}$ に収束します。
+
+幅を見るために判別式を展開します。
+
+$$D = b^2 - ac = \hat{p}_1^2 \hat{p}_0^2 - (\hat{p}_0^2 - z^2 V_0)(\hat{p}_1^2 - z^2 V_1) = z^2(\hat{p}_0^2 V_1 + \hat{p}_1^2 V_0) - z^4 V_0 V_1$$
+
+$z^4 V_0 V_1$ の項は $O(n^{-2})$ なので、これを落として CI の両端に代入すると
+
+$$\frac{b \pm \sqrt{D}}{a} \approx \frac{\hat{p}_1 \hat{p}_0 \pm z\sqrt{\hat{p}_0^2 V_1 + \hat{p}_1^2 V_0}}{\hat{p}_0^2} = \widehat{RR} \pm \frac{z}{\hat{p}_0^2}\sqrt{\hat{p}_0^2 V_1 + \hat{p}_1^2 V_0}$$
+
+となり、さらに $V_1 = \hat{p}_1(1-\hat{p}_1)/n$、$V_0 = \hat{p}_0(1-\hat{p}_0)/n$ を代入して整理すると
+
+$$= \widehat{RR} \pm z\sqrt{\widehat{RR}^2 \left[\frac{1-\hat{p}_1}{n\hat{p}_1} + \frac{1-\hat{p}_0}{n\hat{p}_0}\right]}$$
+
+が得られます。平方根の中身は[リスク比へのデルタ法](/posts/bls-delta-method-rr/)の $\text{Var}(\widehat{RR})$ そのものです。つまり $n$ が大きいとき、Fieller の CI は素朴な対称のデルタ法 CI と一致します。同じ記事の対数変換による CI も、どちらも 1 次近似なので同じ区間に収束します。実務上は、$\mathbb{E}[x_0]$ が十分に大きければ Fieller にデルタ法を上回る利点はない、ということになります。
+
+
+## 数値例
+
+[リスク比へのデルタ法](/posts/bls-delta-method-rr/)と同じデータを使います。
+
+|        | 肯定 | 否定 | 合計 |
+|--------|------|------|------|
+| 曝露群 | 105  | 395  | 500  |
+| 対照群 | 70   | 430  | 500  |
+
+$$\hat{p}_1 = 0.210, \quad \hat{p}_0 = 0.140, \quad \widehat{RR} = 1.500$$
+
+プラグインの分散は
+
+$$V_1 = \frac{0.210 \times 0.790}{500} = 0.0003318, \quad V_0 = \frac{0.140 \times 0.860}{500} = 0.0002408$$
+
+です。$z^2 = 1.96^2 = 3.8416$ として係数を求めると
+
+$$a = 0.140^2 - 3.8416 \times 0.0002408 = 0.019600 - 0.000925 = 0.018675$$
+
+$$b = 0.210 \times 0.140 = 0.029400$$
+
+$$c = 0.210^2 - 3.8416 \times 0.0003318 = 0.044100 - 0.001275 = 0.042825$$
+
+となります。有界になる条件は $x_0 = 70 > z^2(1 - \hat{p}_0) = 3.8416 \times 0.860 = 3.304$ で満たされているので、CI は有界です。
+
+$$D = 0.029400^2 - 0.018675 \times 0.042825 = 0.00086436 - 0.00079972 = 0.00006464$$
+
+$$\sqrt{D} = 0.008040$$
+
+$$\text{CI}_{\text{Fieller}}: \quad \left(\frac{0.029400 - 0.008040}{0.018675}, \; \frac{0.029400 + 0.008040}{0.018675}\right) = (1.144, \; 2.005)$$
+
+同じ記事の対数変換デルタ法の CI は $(1.138, \; 1.977)$ でしたから、Fieller の CI はわずかに広く、特に上側の裾で広がっています。$\mathbb{E}[x_0] = 70$ ではこの差は小さく、どちらの区間も $1$ を含みません。
+
+```{r}
+#| label: fig-ci-comparison
+#| fig-cap: "RR の 95% 信頼区間。3 つの方法の比較。"
+#| echo: false
+#| message: false
+
+tribble(
+  ~method,                 ~rr,   ~lower, ~upper,
+  "Fieller",               1.500, 1.144,  2.005,
+  "Log-transform (delta)", 1.500, 1.138,  1.977,
+  "Bootstrap",             1.500, 1.147,  1.985
+) |>
+  mutate(method = fct_inorder(method) |> fct_rev()) |>
+  ggplot(aes(x = rr, y = method, xmin = lower, xmax = upper, colour = method)) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +
+  geom_pointrange() +
+  scale_x_continuous(breaks = scales::breaks_width(0.25)) +
+  labs(x = "Risk Ratio", y = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "none")
+```
+
+
+## 被覆確率のシミュレーション
+
+### 設計
+
+条件は[ブートストラップによる被覆確率の検証](/posts/bls-bootstrap-validation/)と同じで、4 つのベースライン率、3 つの標本サイズ、それに確認用の 1 条件です。同じ反復データに対して、3 つ目の方法として Fieller の CI を評価に加えます。$x_1 = 0$ または $x_0 = 0$ の反復は、どの方法でも除外します。
+
+| パラメータ           | 値                                      |
+|----------------------|-----------------------------------------|
+| $RR$                 | $1.20$（主要）、$1.50$（確認）          |
+| $p_0$                | $0.02, \; 0.05, \; 0.10, \; 0.20$       |
+| $n \; (= n_1 = n_0)$ | $100, \; 500, \; 2{,}000$               |
+| 反復回数             | $K = 10{,}000$                          |
+| 信頼水準             | $95\%$                                  |
+
+Fieller の非有界な CI（$a \leq 0$ の場合）は、信頼集合が実数全体を含むので、真の $RR$ を被覆したものとして数えます。非有界になった割合は別に報告します。
+
+### 結果
+
+```{r}
+#| label: sim-functions
+#| include: false
+
+bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  rr <- p1 / p0
+  se_log <- sqrt(1 / x1 - 1 / n1 + 1 / x0 - 1 / n0)
+  z <- qnorm(1 - alpha / 2)
+  exp(log(rr) + c(-1, 1) * z * se_log)
+}
+
+bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 5000, alpha = 0.05) {
+  p1_hat <- x1 / n1
+  p0_hat <- x0 / n0
+  x1_star <- rbinom(B, n1, p1_hat)
+  x0_star <- rbinom(B, n0, p0_hat)
+
+  valid <- x0_star > 0 & x1_star > 0
+  if (sum(valid) < 100) {
+    return(c(NA, NA))
+  }
+
+  rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
+  quantile(rr_star, c(alpha / 2, 1 - alpha / 2), names = FALSE)
+}
+
+bls_fieller_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  z2 <- qnorm(1 - alpha / 2)^2
+
+  V1 <- p1 * (1 - p1) / n1
+  V0 <- p0 * (1 - p0) / n0
+
+  a <- p0^2 - z2 * V0
+  b <- p1 * p0
+  cc <- p1^2 - z2 * V1
+
+  if (a <= 0) return(c(NA, NA))
+
+  D <- b^2 - a * cc
+  if (D < 0) return(c(NA, NA))
+
+  c((b - sqrt(D)) / a, (b + sqrt(D)) / a)
+}
+
+coverage_sim <- function(p0, rr, n, K = 10000, B = 5000, alpha = 0.05) {
+  p1 <- rr * p0
+  true_rr <- rr
+
+  dm_cover <- 0L
+  bs_cover <- 0L
+  fi_cover <- 0L
+  fi_unbounded <- 0L
+  valid_dm <- 0L
+  valid_bs <- 0L
+  valid_fi <- 0L
+
+  for (k in seq_len(K)) {
+    x1 <- rbinom(1, n, p1)
+    x0 <- rbinom(1, n, p0)
+
+    if (x1 == 0 || x0 == 0) next
+
+    # デルタ法
+    dm_ci <- bls_rr_ci(x1, n, x0, n, alpha)
+    valid_dm <- valid_dm + 1L
+    dm_cover <- dm_cover + (dm_ci[1] <= true_rr & true_rr <= dm_ci[2])
+
+    # ブートストラップ
+    bs_ci <- bls_bootstrap_ci(x1, n, x0, n, B, alpha)
+    if (!anyNA(bs_ci)) {
+      valid_bs <- valid_bs + 1L
+      bs_cover <- bs_cover + (bs_ci[1] <= true_rr & true_rr <= bs_ci[2])
+    }
+
+    # Fieller
+    fi_ci <- bls_fieller_ci(x1, n, x0, n, alpha)
+    valid_fi <- valid_fi + 1L
+    if (anyNA(fi_ci)) {
+      fi_unbounded <- fi_unbounded + 1L
+      fi_cover <- fi_cover + 1L
+    } else {
+      fi_cover <- fi_cover + (fi_ci[1] <= true_rr & true_rr <= fi_ci[2])
+    }
+  }
+
+  tibble(
+    p0 = p0,
+    rr = rr,
+    n = n,
+    ex0 = n * p0,
+    dm_coverage = dm_cover / valid_dm,
+    fi_coverage = fi_cover / valid_fi,
+    bs_coverage = bs_cover / valid_bs,
+    fi_unbounded_rate = fi_unbounded / valid_fi,
+    valid_dm = valid_dm,
+    valid_bs = valid_bs,
+    valid_fi = valid_fi
+  )
+}
+```
+
+```{r}
+#| label: run-sim
+#| include: false
+#| cache: true
+
+set.seed(2026)
+
+grid <- crossing(
+  p0 = c(0.02, 0.05, 0.10, 0.20),
+  n = c(100, 500, 2000),
+  rr = c(1.20, 1.50)
+) |>
+  filter(rr == 1.20 | (p0 == 0.05 & n == 100))
+
+results <- grid |>
+  pmap_dfr(
+    \(p0, n, rr) coverage_sim(p0, rr, n)
+  ) |>
+  arrange(ex0)
+```
+
+```{r}
+#| label: tbl-coverage
+#| tbl-cap: "条件別に見た 95% CI の被覆確率と、Fieller が非有界な CI を返した割合。すべての方法を $K = 10,000$ 回の反復で真の $RR$ に対して評価している。"
+#| echo: false
+#| message: false
+
+results |>
+  select(p0, n, rr, ex0, dm_coverage, fi_coverage, bs_coverage, fi_unbounded_rate) |>
+  gt::gt() |>
+  gt::fmt_number(columns = c(p0, rr), decimals = 2) |>
+  gt::fmt_integer(columns = c(n, ex0)) |>
+  gt::fmt_percent(columns = c(dm_coverage, fi_coverage, bs_coverage, fi_unbounded_rate), decimals = 1) |>
+  gt::cols_label(
+    p0 = gt::md("$p_0$"),
+    n  = gt::md("$n$"),
+    rr = gt::md("$RR$"),
+    ex0 = gt::md("$\\mathbb{E}[x_0]$"),
+    dm_coverage = "Delta method",
+    fi_coverage = "Fieller",
+    bs_coverage = "Bootstrap",
+    fi_unbounded_rate = "Fieller unbounded"
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+```{r}
+#| label: fig-coverage
+#| fig-cap: "$E[x_0]$ に対する 95% CI の被覆確率。破線は名目の 95%。Fieller の被覆確率には、被覆したものとして数えた非有界な区間を含む。"
+#| echo: false
+#| message: false
+
+cov_long <- results |>
+  filter(rr == 1.20) |>
+  select(ex0,
+    `Delta method` = dm_coverage,
+    Fieller = fi_coverage,
+    Bootstrap = bs_coverage
+  ) |>
+  pivot_longer(-ex0, names_to = "method", values_to = "coverage") |>
+  mutate(method = factor(method, levels = c("Delta method", "Fieller", "Bootstrap")))
+
+ggplot(cov_long, aes(x = ex0, y = coverage, colour = method, shape = method)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  geom_point(size = 2.5) +
+  geom_line(
+    data = cov_long |> summarise(coverage = mean(coverage), .by = c(ex0, method)),
+    aes(x = ex0, y = coverage)
+  ) +
+  scale_x_log10(breaks = c(2, 5, 10, 20, 50, 100, 200, 400)) +
+  scale_y_continuous(
+    labels = scales::label_percent(accuracy = 0.1),
+    limits = c(0.93, 1.0)
+  ) +
+  labs(x = expression(E(x[0])), y = "Coverage", colour = NULL, shape = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top")
+```
+
+@fig-coverage と @tbl-coverage は、前回のシミュレーションの結果を 3 つの方法に広げたものです。
+
+$\mathbb{E}[x_0]$ が大きい領域では、3 つとも一致します。$\mathbb{E}[x_0] \geq 50$ ではいずれも 95% から 1 パーセントポイント程度の範囲に収まり、方法の選択は実務上ほとんど影響しません。
+
+$\mathbb{E}[x_0]$ が小さくなると、様子が分かれます。非有界な CI の割合が 1% 程度である $\mathbb{E}[x_0] = 10$ では、Fieller の被覆確率はデルタ法より 95% に近いです。Taylor の層を外した分の改善で、Fieller はそもそも SE を計算しないため、$\frac{1}{x_0}$ の項で SE が膨らむことがありません。
+
+$\mathbb{E}[x_0] = 5$ では Fieller の被覆確率がデルタ法を上回りますが、これは精度が上がったからではなく、非有界な CI の影響です。この条件では Fieller の CI の 25% が非有界で、それを被覆として数えれば無条件の被覆確率は上振れします。ここで見るべきは被覆確率の値ではなく非有界な CI の割合そのもので、この期待度数では 4 件に 1 件の調査が意味のある CI を作れないことを示しています。
+
+$\mathbb{E}[x_0]$ がさらに小さくなると、中心極限定理がすべての方法の限界になります。$\mathbb{E}[x_0] = 2$ では $\hat{p}_0$ 自体の正規近似が不十分です。Fieller は反復の 85% で非有界な CI を返し、データが有限の区間を支えられないことを示します。同じ条件でのデルタ法の 99.9% という被覆確率も、推定が信頼できることではなく、区間が広すぎて情報を持たないことの表れです。
+
+
+## 使い分け
+
+$\mathbb{E}[x_0]$ の範囲と、用途ごとの推奨を表にまとめます。
+
+| $\mathbb{E}[x_0]$ | 単一の調査の CI | 検出力・$n_{\min}$ の計算 | メタアナリシスの重み | SQL のバッチ処理 |
+|---|---|---|---|---|
+| $\geq 20$ | デルタ法 | デルタ法 | デルタ法 | デルタ法 |
+| $5$ から $20$ | Fieller | デルタ法 | デルタ法 | Fieller |
+| $< 5$ | 報告しない | --- | --- | --- |
+
+$5$ から $20$ の範囲では、CI と分散式は別の役割を担います。$\widehat{RR}$ の周りの不確実性を報告するなら Fieller の CI の方が正確ですが、分散は得られません。デルタ法の分散式 $\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$ は、そこから作る CI が過剰に被覆するとしても、検出力の計算や重み付けには依然として使えます。CI の精度の問題は、下流の用途で分散式を無効にするものではなく、その分散から構成した CI の両端が広すぎるという話にとどまります。
+
+ブートストラップの役割は検証です。仮定への依存が最も小さく、閉じた形の CI が正しく動いているかを確認する基準として自然に使えます。SQL で実装できず調査あたり $O(B)$ のコストがかかるため本番の CI 計算には向きませんが、単一の調査をアドホックに分析する場合や、処理を監査する場合には適した道具です。
+
+
+## R コード
+
+``` r
+bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  rr <- p1 / p0
+
+  se_log <- sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  z <- qnorm(1 - alpha / 2)
+  exp(log(rr) + c(-1, 1) * z * se_log)
+}
+
+bls_fieller_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
+  p1 <- x1 / n1
+  p0 <- x0 / n0
+  z2 <- qnorm(1 - alpha / 2)^2
+
+  V1 <- p1 * (1 - p1) / n1
+  V0 <- p0 * (1 - p0) / n0
+
+  a  <- p0^2 - z2 * V0
+  b  <- p1 * p0
+  cc <- p1^2 - z2 * V1
+
+  # 非有界: 対照群の肯定回答率を 0 と区別できない
+  if (a <= 0) return(c(NA, NA))
+
+  D <- b^2 - a * cc
+  if (D < 0) return(c(NA, NA))
+
+  c((b - sqrt(D)) / a, (b + sqrt(D)) / a)
+}
+
+bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 10000, alpha = 0.05) {
+  p1_hat <- x1 / n1
+  p0_hat <- x0 / n0
+  x1_star <- rbinom(B, n1, p1_hat)
+  x0_star <- rbinom(B, n0, p0_hat)
+
+  valid <- x0_star > 0 & x1_star > 0
+  rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
+  quantile(rr_star, c(alpha / 2, 1 - alpha / 2))
+}
+
+bls_rr_ci(105, 500, 70, 500)
+# [1] 1.138381 1.976491
+
+bls_fieller_ci(105, 500, 70, 500)
+# [1] 1.143826 2.004849
+
+bls_bootstrap_ci(105, 500, 70, 500)
+#     2.5%    97.5%
+# 1.146667 1.984854
+```
+
+## SQL（BigQuery）
+
+Fieller の CI には 2 次式の係数 $a$、$b$、$c$ と判別式 $D$ が必要です。$a \leq 0$ または $D < 0$ のときは、非有界または空の区間であることを示すために `NULL` を返します。
+
+``` sql
+with bls as (
+  select
+    study_id,
+    x1,  -- 曝露群の肯定回答数
+    n1,  -- 曝露群の合計
+    x0,  -- 対照群の肯定回答数
+    n0   -- 対照群の合計
+  from bls_results
+  where x1 > 0 and x0 > 0
+),
+
+props as (
+  select
+    study_id,
+    x1, n1, x0, n0,
+    x1 / n1 as p1,
+    x0 / n0 as p0
+  from bls
+),
+
+coefs as (
+  select
+    study_id,
+    p1, p0,
+    p1 / p0 as rr,
+    pow(p0, 2) - 3.8416 * p0 * (1 - p0) / n0 as a,
+    p1 * p0 as b,
+    pow(p1, 2) - 3.8416 * p1 * (1 - p1) / n1 as c
+  from props
+),
+
+disc as (
+  select
+    *,
+    pow(b, 2) - a * c as d
+  from coefs
+)
+
+select
+  study_id,
+  rr,
+  case
+    when a <= 0 or d < 0 then null
+    else (b - sqrt(d)) / a
+  end as ci_lower,
+  case
+    when a <= 0 or d < 0 then null
+    else (b + sqrt(d)) / a
+  end as ci_upper
+from disc
+```
