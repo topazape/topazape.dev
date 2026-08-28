@@ -3,7 +3,7 @@ title: "How Close Can a Before/After Comparison Get to the Truth?"
 subtitle: "A Synthetic Panel with Known Ground Truth"
 draft: true
 draft-mode: unlinked
-date: "2026-10-06"
+date: "2026-10-07"
 categories: ["causal-inference", "statistics"]
 ---
 

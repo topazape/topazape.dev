@@ -2,7 +2,7 @@
 title: "前後比較は反実仮想の代役を果たさない: 真値既知の合成データの設計"
 draft: true
 draft-mode: unlinked
-date: "2026-10-06"
+date: "2026-10-07"
 categories: ["causal-inference", "statistics"]
 ---
 
