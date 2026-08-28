@@ -53,3 +53,6 @@ rsconnect/
 
 /_site/
 index_files/
+
+/posts/**/*.html
+/posts/**/*_files/
