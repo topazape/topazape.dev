@@ -2,7 +2,7 @@
 title: "The Synthetic Control Method (SCM): From Choosing a Control to Estimating Weights"
 draft: true
 draft-mode: unlinked
-date: "2026-11-03"
+date: "2026-10-21"
 categories: ["causal-inference", "statistics"]
 ---
 
