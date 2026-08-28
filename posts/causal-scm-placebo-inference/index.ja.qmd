@@ -276,7 +276,7 @@ ggplot(mapping = aes(x = time_unit, y = gap, group = .id)) +
     color = "tomato"
   ) +
   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-  scale_y_continuous(labels = \(x) x * 100) +
+  scale_y_continuous(labels = scales::label_number(scale = 100)) +
   labs(x = NULL, y = "gap (pp)") +
   theme_classic(base_family = "ubuntu", base_size = 13)
 ```
@@ -329,7 +329,7 @@ sc |>
 
 iOSの比は5.08で1位であり、2位のandroid(1.39)を大きく引き離す。p値は $1/11 \approx 0.091$ となる。
 
-ここに分解能の限界がある。取り得るp値は $1/11$ 刻みの11通りだけで、効果がどれほど明瞭でも $1/11 \approx 0.09$ を下回らない。つまり $1/11$ より小さい有意水準(慣習の5%を含む)では、どんな効果があっても棄却は起こり得ない。p値の細かさを決めるのは効果の強さではなくdonorの数であり、この検定は有意性の判定というより、処置ユニットのギャップがplaceboの分布のどこに位置するかを示す順位づけとして読むのが実態に合う。
+ここに分解能の限界がある。donorが10台なら、効果がどれほど明瞭でもp値は $1/11$ より下がらない。5%水準には原理的に届かず、p値の細かさを決めるのは効果の強さではなくdonorの数である。この検定は、有意性の判定というより、処置ユニットのギャップがplaceboの分布のどこに位置するかを示す順位づけとして読むのが実態に合う。
 
 ## 検証できるのは事前期間だけ
 
