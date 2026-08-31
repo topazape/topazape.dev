@@ -92,7 +92,10 @@ panel <- panel_gen |>
   select(variant, date, device, post, impression, complete, complete_rate)
 ```
 
-Suppose you are a data scientist at an AVOD service.
+In this series, several approaches to estimating the effect are applied to the same dataset.
+This first article builds that dataset and works through the before/after comparison that everyone tries first.
+
+Suppose you are a data scientist at a video streaming service that runs on a wide range of devices.
 
 On 2026-06-01, users became able to pause a video ad, but only on iOS devices.
 Users cannot skip ads while watching.
