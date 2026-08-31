@@ -1,5 +1,5 @@
 ---
-title: "前後比較は反実仮想の代役を果たさない: 真値既知の合成データの設計"
+title: "前後比較の限界から始める合成データの設計"
 draft: true
 draft-mode: unlinked
 date: "2026-10-07"
@@ -115,7 +115,9 @@ panel <- panel_gen |>
 最も素朴な方法は、リリースの前後で完再生率を比べること、いわゆる前後比較です。基準日 $t_0$ と時間窓の長さ $k_{\text{pre}}, k_{\text{post}}$ を決め、次の差を計算します。
 
 $$
-  \hat{\Delta}(t_0;\, k_{\text{pre}}, k_{\text{post}}) = \frac{\sum_{t \in W_{\text{post}}} x_t}{\sum_{t \in W_{\text{post}}} n_t} - \frac{\sum_{t \in W_{\text{pre}}} x_t}{\sum_{t \in W_{\text{pre}}} n_t}
+  \hat{\Delta}(t_0;\, k_{\text{pre}}, k_{\text{post}})
+  = \frac{\sum_{t \in W_{\text{post}}} x_t}{\sum_{t \in W_{\text{post}}} n_t}
+                                                         - \frac{\sum_{t \in W_{\text{pre}}} x_t}{\sum_{t \in W_{\text{pre}}} n_t}
 $$
 
 ここで $n_t$ と $x_t$ は日 $t$ における iOS のインプレッション数と完再生数であり、時間窓は $W_{\text{pre}} = [t_0 - k_{\text{pre}},\, t_0)$、$W_{\text{post}} = [t_0,\, t_0 + k_{\text{post}})$ と取ります。結果は pp 単位とします。
@@ -255,11 +257,14 @@ grid |>
 パネルはデバイス×日次の集計セルとして直接生成し、個票のユーザーは作りません。ユーザーは、デバイスごとのボリュームスケール $M_d$ としてだけ存在します。
 
 $$
-  n_{dt} \sim \text{Poisson}(1.5\, M_d), \qquad x_{dt} \sim \text{Binomial}(n_{dt},\, p_{dt})
+  n_{dt} \sim \text{Poisson}(1.5\, M_d), \qquad x_{dt}
+         \sim \text{Binomial}(n_{dt},\, p_{dt})
 $$
 
 $$
-  \text{logit}\, p_{dt} = \alpha_d + w_{\text{dow}(t)} + \gamma \cdot \frac{t}{T_{\text{total}}} + \tau \cdot 1\{d = \text{ios},\ t \geq T\}
+  \text{logit}\, p_{dt} = \alpha_d + w_{\text{dow}(t)} + \gamma
+                          \cdot \frac{t}{T_{\text{total}}} + \tau
+                          \cdot 1\{d = \text{ios},\ t \geq T\}
 $$
 
 $n_{dt}$ はデバイス $d$ の日 $t$ のインプレッション数、$x_{dt}$ は完再生数、$p_{dt}$ は1インプレッションが完再生になる確率です。やっていることはロジットスケール上の足し算で、デバイス固有の切片 $\alpha_d$ に、曜日効果 $w$、全デバイス共通の緩いトレンド $\gamma$、そして iOS のリリース後にだけ乗る処置効果 $\tau$ を加えます。$t / T_{\text{total}}$ は全期間に対する経過割合で、0 から 1 を動きます。期間は 2025-12-01 から 2026-07-31 の243日間、リリースは $T =$ 2026-06-01 で、事前182日と事後61日に分かれます。
@@ -329,7 +334,9 @@ ggplot(mapping = aes(x = date, y = complete_rate, color = device)) +
 真値には、処置群における平均処置効果 ATT(average treatment effect on the treated)を pp スケールで使います。具体的には、iOS の事後期間の各セルについて $\tau$ を含む生成率と外した生成率の差を取り、それをインプレッションで加重平均した値です。
 
 $$
-  \text{ATT} = \frac{\sum_{t \geq T} n_{\text{ios},t} \left[ \sigma(\ell_{\text{ios},t}) - \sigma(\ell_{\text{ios},t} - \tau) \right]}{\sum_{t \geq T} n_{\text{ios},t}} = +1.049 \text{ pp}
+  \text{ATT}
+  = \frac{\sum_{t \geq T} n_{\text{ios},t} \left[ \sigma(\ell_{\text{ios},t}) - \sigma(\ell_{\text{ios},t} - \tau) \right]}{\sum_{t \geq T} n_{\text{ios},t}}
+             = +1.049 \text{ pp}
 $$
 
 ここで $\sigma$ はロジスティック関数、$\ell$ は処置を含む線形予測子です。この値は生成式から導いたものであって、実現した完再生数から推定したものではありません。シードが影響するのは Poisson で引いた重み $n$ だけなので、事実上固定の物差しとして扱えます。以後、シリーズに登場する推定量はすべて、この $+1.049$pp の隣に並べて評価されます。
@@ -347,7 +354,10 @@ $$
 要件1はさっそくここで回収できます。合成データであれば、すべてのセルについて処置ありの生成率 $p_{dt} = \sigma(\ell_{dt})$ と処置なしの生成率 $p^0_{dt} = \sigma(\ell_{dt} - \tau \cdot 1\{d = \text{ios},\ t \geq T\})$ の両方が手に入ります。$\hat{\Delta}$ の中の完再生数をこれらの率で置き換えると、インプレッション数で条件付けた期待値が得られ、それは処置成分と混入成分に厳密に分解できます。
 
 $$
-  \hat{\Delta} = \underbrace{\left[ m(W_{\text{post}}) - m(W_{\text{pre}}) \right] - \left[ m^0(W_{\text{post}}) - m^0(W_{\text{pre}}) \right]}_{\text{処置}} + \underbrace{m^0(W_{\text{post}}) - m^0(W_{\text{pre}})}_{\text{混入}} + \text{ノイズ}
+  \hat{\Delta}
+  = \underbrace{\left[ m(W_{\text{post}}) - m(W_{\text{pre}}) \right] - \left[ m^0(W_{\text{post}}) - m^0(W_{\text{pre}}) \right]}_{\text{処置}}
+                 + \underbrace{m^0(W_{\text{post}}) - m^0(W_{\text{pre}})}_{\text{混入}}
+                 + \text{ノイズ}
 $$
 
 ここで $m(W) = \sum_{t \in W} n_t p_t / \sum_{t \in W} n_t$ であり、$m^0$ は $p^0$ で同じ量を計算したものです。混入項は「$\tau = 0$ の世界での前後差」そのものであり、トレンドと時間窓の曜日構成の影響はここに集まります。ノイズは実現値から期待値を引いた残差です。
