@@ -1,0 +1,407 @@
+---
+title: "差分の差分法(DiD)による効果検証"
+draft: true
+draft-mode: unlinked
+date: "2026-10-07"
+categories: ["causal-inference", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+att_true <- 0.01049 # 真値ATT
+
+panel <- bind_rows(
+  parallel = read_csv(
+    "../../data/causal-synthetic-data-design/panel_parallel.csv",
+    show_col_types = FALSE
+  ),
+  divergent = read_csv(
+    "../../data/causal-synthetic-data-design/panel_divergent.csv",
+    show_col_types = FALSE
+  ),
+  .id = "variant"
+)
+```
+
+[前回の記事](/posts/causal-synthetic-data-design/)では、2026-06-01にAVODサービスの広告一時停止機能がiOSだけにリリースされたという状況を仮定し、全11デバイス×日次の広告完再生率のパネルデータを生成した。この機能の効果の真値はATT（処置群における平均処置効果）として+1.049パーセントポイント（以後 pp）と設定した。
+
+前回、このデータに対して単純な前後比較を行っても真値を推定することができなかった。リリースが存在しない日付でも+0.62ppの「効果」が出てしまい、曜日周期・トレンド・ノイズが差分に混入したためと考えられる。前後比較がうまくいかない原因の一つとして、このような処置以外の時間変動の混入が挙げられる。
+
+もし、同じ時間変動を受けている別デバイスのデータがあればどうだろうか。このデバイスの前後差をiOSの前後差から引き算することで、混入分だけを相殺できるはずである。これが、よく知られている差分の差分法（Difference in Differences; DiD）の発想である。そこで今回は、DiDを用いて真の因果効果を推定してみる。
+
+この記事では、以下3つについて検証する。
+
+1. DiD推定量を定義し、相殺が成立する条件（平行トレンド仮定）と、対照に使える群の条件を考える。
+2. 処置群と対照群の事前期間の系列に対して目視とギャップの傾き検定を行い、トレンドの平行性を確認する。
+3. 平行トレンドが成立するデータとそうでないデータの両方に同じ7日窓のDiDを適用し、前者のCIが真値をカバーし、後者のCIが真値を排除することを数値で確認する。
+
+## DiD推定量
+
+処置群はiOSに固定し、対照に使うデバイスを $c$ と置く。デバイス $d$、期間 $W \in \{\text{pre}, \text{post}\}$ の完再生率を $\bar{Y}_{d,W} = \sum_{t \in W} x_{dt} \big/ \sum_{t \in W} n_{dt}$ とする（$n$ はインプレッション数、$x$ は完再生数）。DiDの推定量は前後差の差になる。
+
+$$
+  \hat{\tau}_{\text{DiD}} = \left(\bar{Y}_{\text{iOS},\text{post}} - \bar{Y}_{\text{iOS},\text{pre}}\right) - \left(\bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}}\right)
+$$
+
+$\bar{Y}_{d,W}$ の期待値が、デバイス水準 $\mu_d$、時間効果 $\lambda_W$、処置効果 $\tau$ の加法構造を持つとき、引き算で消える項は次のとおり。
+
+  |          | pre                                       | post                                              | 前後差                                                  |
+  | -------- | ----------------------------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+  | iOS      | $\mu_{\text{iOS}} + \lambda_{\text{pre}}$ | $\mu_{\text{iOS}} + \lambda_{\text{post}} + \tau$ | $(\lambda_{\text{post}} - \lambda_{\text{pre}}) + \tau$ |
+  | 対照 $c$ | $\mu_c + \lambda_{\text{pre}}$            | $\mu_c + \lambda_{\text{post}}$                   | $\lambda_{\text{post}} - \lambda_{\text{pre}}$          |
+  | 差の差   |                                           |                                                   | $\tau$                                                  |
+
+行方向の差で $\mu_d$ が消え、行間の差で $\lambda_W$ が消える。前後比較の誤りの原因となった曜日周期やトレンドは、いずれも $\lambda_W$ に属するので、この構造が成り立つ場合に相殺される。ただし、この表の成立には次の2つの条件が必要になる。
+
+### 平行トレンド仮定
+
+時間効果がデバイス共通であること。トレンドに限らず一時的な変動も $\lambda_W$ に含まれるので、教科書で共通ショック仮定と呼ばれる内容もここに入る。反実仮想で書くと
+
+$$
+  \mathbb{E}\left[\bar{Y}^0_{\text{iOS},\text{post}} - \bar{Y}^0_{\text{iOS},\text{pre}}\right] = \mathbb{E}\left[\bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}}\right]
+$$
+
+となる（$\bar{Y}^0$ は処置なしの世界の値）。左辺の post 項は、処置が実際に行われた世界では観測できない反実仮想であるため、この等式をデータから直接検証することはできない。事前期間の挙動から確からしさを確認することはできるが、成立そのものの証明は原理的に不可能である。
+
+### 対照群の条件
+
+当たり前だが、対照が未処置であり、処置の波及も受けないことである。対照側の前後差に処置効果が混入すると、引き算がその分だけ $\hat{\tau}_{\text{DiD}}$ から効果を削ってしまう。
+
+## 対照にAndroidを選ぶ理由
+
+対照 $c$ の候補は10デバイスあるが、本記事ではAndroidを使う。理由は次の3つである。
+
+- 対照群の条件を満たす。処置はiOSアプリ内のUI変更であり、デバイスをまたいでAndroidの完再生率に波及する経路は考えにくい。
+- 交絡構造が最も近い。同じモバイルアプリとしてユーザー層と視聴文脈がiOSに最も近く、時間効果を共有する見込みが対照候補の中で最も高い。
+- 対照候補のうち日次インプレッションのボリュームが最大で、対照側のノイズが最も小さく済む。
+
+ただし、この3つはいずれも分析者の事前知識に基づき、データによる裏付けはない。
+
+## 分析期間の設定
+
+分析期間は、リリース前のデータがある全182日（事前窓）とリリース日からの事後7日（事後窓）とする。
+
+事後窓を7日にしたのは、曜日が一巡する最短の長さだからである。事前・事後の両窓が各曜日を同じ割合で含んでいれば、曜日効果は前後差を取った時点で消える。今回の事前・事後窓はどちらも各曜日を同じ割合で含むので、この混入が起きない。曜日が揃う窓は14日でも28日でも作れるが、今回は最短の7日を採る。
+
+また、事前期間を全部使うのは、前後比較と事情が違うためである。前後比較では長い窓がトレンドを取り込んでしまうが、DiDでは共通トレンドが対照側の前後差にも同じだけ入り、差を取る時点で平行トレンドの下で相殺される。したがって事前の期間を長く取るデメリットはなく、むしろノイズが減る分だけお得になる。
+
+## 平行トレンドの確認
+
+この仮定そのものは検証できないが、事前期間であれば両デバイスとも観測されているので、「事前期間に限れば平行だったか」なら点検できる。そこで、目視と傾き検定の二段で行う。
+
+ここで、前回生成したもう1つのデータセットを使用する。parallel は平行トレンドが成立する本命の世界線、divergent はiOSのlogitにだけ期間比例の固有トレンド($\delta = +0.30$)を加えた世界線である。事前期間の終わりまでに約1.3ppの乖離が蓄積している。
+
+### 目視
+
+```{r}
+#| label: fig-pretrend
+#| fig-cap: >-
+#|   事前期間のiOSとAndroidの日次完再生率。左: parallel（平行トレンド成立）、右: divergent（iOSのみ乖離トレンドあり）。
+#| echo: false
+#| message: false
+
+panel |>
+  filter(device %in% c("ios", "android"), !post) |>
+  mutate(variant = fct_relevel(variant, "parallel", "divergent")) |>
+  ggplot(aes(x = date, y = complete_rate, color = device)) +
+  geom_line(linewidth = 0.4) +
+  scale_color_manual(values = c(ios = "tomato", android = "darkslategray")) +
+  scale_x_date(date_breaks = "1 months", date_labels = "%b") +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 0.1)) +
+  facet_wrap(~variant) +
+  labs(x = NULL, y = "完再生率", color = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top", strip.background = element_blank())
+```
+
+@fig-pretrend は事前期間のiOSとAndroidを重ねた図で、左が parallel、右が divergent である。真に平行な parallel も、2本の系列は頻繁に交差し平行トレンド仮定が成立するか断言しにくい。
+
+そこで、ノイズと曜日周期を除いてから確認してみる。@fig-gap は日次ギャップ $D_t = Y_{\text{iOS},t} - Y_{\text{And},t}$ とその7日移動平均である。窓長7日は曜日周期と同じ長さなので周期成分を消し、ノイズを低減する。ここまでやると、parallel のギャップはほぼ平坦、divergent は右肩上がりと、2つの世界線の違いが確認できる。
+
+```{r}
+#| label: fig-gap
+#| fig-cap: >-
+#|   事前期間の日次ギャップ（iOS − Android）。点は日次値、実線は7日移動平均。
+#| echo: false
+#| message: false
+#| warning: false
+
+panel |>
+  filter(device %in% c("ios", "android"), !post) |>
+  pivot_wider(
+    names_from = device,
+    values_from = complete_rate,
+    id_cols = c(variant, date)
+  ) |>
+  mutate(
+    gap = ios - android,
+    gap_ma = slider::slide_dbl(
+      gap,
+      mean,
+      .before = 3,
+      .after = 3,
+      .complete = TRUE
+    ),
+    .by = variant
+  ) |>
+  mutate(variant = fct_relevel(variant, "parallel", "divergent")) |>
+  ggplot(aes(x = date)) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  geom_point(aes(y = gap), size = 0.6, alpha = 0.4, color = "darkslategray") +
+  geom_line(aes(y = gap_ma), color = "tomato", linewidth = 0.5) +
+  scale_x_date(date_breaks = "1 months", date_labels = "%b") +
+  scale_y_continuous(labels = scales::label_number(scale = 100)) +
+  facet_wrap(~variant) +
+  labs(x = NULL, y = "ギャップ (pp)") +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(strip.background = element_blank())
+```
+
+### ギャップの傾き検定
+
+定量的に判定するため、事前期間の日次ギャップ $D_t$ に直線を当てはめ、その傾きがゼロかどうかを検定する。横軸には経過日数そのものではなく、事前期間の開始で0、終了で1になるようスケールした $t / T_{\text{pre}}$ を使う。こうすると傾き $\beta$ が「事前期間全体で開くギャップ幅」として読める。
+
+$$
+  D_t = \alpha + \beta \cdot \frac{t}{T_{\text{pre}}} + \varepsilon_t, \qquad H_0: \beta = 0
+$$
+
+```{r}
+#| label: tbl-slope
+#| tbl-cap: >-
+#|   事前期間のギャップ傾き検定。傾きの単位は事前期間全体で開くギャップ幅（pp）。
+#| echo: false
+#| message: false
+
+panel |>
+  filter(device %in% c("ios", "android"), !post) |>
+  pivot_wider(
+    names_from = device,
+    values_from = complete_rate,
+    id_cols = c(variant, date)
+  ) |>
+  mutate(
+    gap = ios - android,
+    t_frac = as.integer(date - min(date)) / as.integer(max(date) - min(date)),
+    .by = variant
+  ) |>
+  mutate(variant = fct_relevel(variant, "parallel", "divergent")) |>
+  gtsummary::tbl_strata(
+    strata = variant,
+    .tbl_fun = \(d) {
+      lm(gap ~ t_frac, data = d) |>
+        gtsummary::tbl_regression(
+          label = list(t_frac = "傾き（pp）"),
+          estimate_fun = \(x) gtsummary::style_number(x * 100, digits = 2)
+        )
+    },
+    .header = "{strata}"
+  ) |>
+  gtsummary::as_gt() |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+parallel は $\hat{\beta} = -0.08$pp（$p = 0.68$）で乖離の証拠は見つからず、divergent は $+1.29$pp（$p = 2.1 \times 10^{-11}$）で帰無仮説を棄却する。divergent の点推定は生成に仕込んだ約1.3ppの乖離をほぼ正確に示しており、傾き検定は目視では断言できなかった2つの世界線を明確に区別している。
+
+ただし、この検定の守備範囲は限られる。見ているのは事前期間の線形の乖離だけなので、事後期間の直前に始まる乖離や非線形の乖離はこの回帰には映らない。また、本当に必要なのは事後期間の平行性だが、それは反実仮想を含むため原理的に検証できない。
+
+## 推定
+
+7日窓のDiDを両世界線に適用する。推定量に現れる4つの完再生率 $\bar{Y}_{d,W}$ をそれぞれ独立な二項比率とみなし、その分散 $\hat{p}_{d,W}(1 - \hat{p}_{d,W}) / n_{d,W}$（$n_{d,W}$ は窓内の総インプレッション数）の和の平方根を標準誤差とする。この扱いは生成過程が日次独立の二項である本データでは正確だが、実データでは同一ユーザーの日次重複が自己相関を生み、標準誤差を過小評価しやすい場合があるため注意が必要である。
+
+```{r}
+#| label: did
+#| include: false
+
+did <- panel |>
+  mutate(k_post = 7) |>
+  filter(
+    date < date_treat + k_post,
+    device %in% c("ios", "android")
+  ) |>
+  mutate(period = if_else(post, "post", "pre")) |>
+  summarise(
+    complete = sum(complete),
+    impression = sum(impression),
+    .by = c(k_post, variant, device, period)
+  ) |>
+  mutate(
+    rate = complete / impression,
+    var_rate = rate * (1 - rate) / impression
+  ) |>
+  pivot_wider(
+    names_from = period,
+    values_from = c(rate, var_rate),
+    id_cols = c(k_post, variant, device)
+  ) |>
+  mutate(
+    diff = rate_post - rate_pre,
+    var_diff = var_rate_post + var_rate_pre
+  ) |>
+  pivot_wider(
+    names_from = device,
+    values_from = c(diff, var_diff),
+    id_cols = c(k_post, variant)
+  ) |>
+  mutate(
+    estimate = diff_ios - diff_android,
+    se = sqrt(var_diff_ios + var_diff_android),
+    ci_lower = estimate - qnorm(0.975) * se,
+    ci_upper = estimate + qnorm(0.975) * se,
+    covered = ci_lower <= att_true & att_true <= ci_upper
+  )
+```
+
+```{r}
+#| label: tbl-did
+#| tbl-cap: "7日窓のDiD推定。真値ATTは+1.049pp。"
+#| echo: false
+#| message: false
+
+did |>
+  mutate(
+    variant = factor(variant, levels = c("parallel", "divergent")),
+    truth = if_else(covered, "カバー", "排除")
+  ) |>
+  arrange(variant) |>
+  select(variant, estimate, se, ci_lower, ci_upper, truth) |>
+  gt::gt() |>
+  gt::fmt_number(
+    columns = c(estimate, ci_lower, ci_upper),
+    decimals = 2,
+    scale_by = 100,
+    force_sign = TRUE
+  ) |>
+  gt::fmt_number(columns = se, decimals = 2, scale_by = 100) |>
+  gt::cols_label(
+    variant = "世界線",
+    estimate = "推定値 (pp)",
+    se = "SE (pp)",
+    ci_lower = "CI下限 (pp)",
+    ci_upper = "CI上限 (pp)",
+    truth = "真値+1.049pp"
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+parallel の推定値は $+1.31$pp、95%CIは $[+0.76, +1.85]$ である。CIは0を含まないので、リリース後1週間の時点で効果は有意であり、かつ真値 $+1.049$pp をカバーしている。点推定の $+0.26$pp の上振れはSE $0.28$pp の $0.9 \sigma$ にあたり、ノイズの範囲に収まる。一方、divergent の推定値は $+1.79$pp、95%CIは $[+1.26, +2.33]$ で、真値を含まない。
+
+もし生系列の図だけで平行トレンドを判断し、移動平均や傾き検定を飛ばしていたら、divergent でも $+1.79$pp を自信を持って報告する流れになっていたと思われる。
+
+## 回帰形式との対応
+
+同じ推定量は回帰でも書ける。処置ダミー $D = 1\{d = \text{iOS}\}$ と事後ダミー $P = 1\{t \geq T\}$ を使い、日次の完再生率を目的変数、インプレッション数を重みとして次のモデルを当てはめる。
+
+$$
+  Y_{dt} = \beta_0 + \beta_1 D + \beta_2 P + \beta_3 DP + \varepsilon_{dt}
+$$
+
+ダミー2つとその積だけの飽和モデルなので、$\hat{\beta}_3$ は $\hat{\tau}_{\text{DiD}}$ と代数的に同一になる。実際、`lm(complete_rate ~ treated * post, weights = impression)` の交互作用係数は前節の $+1.31$pp を返す。文献や実務ツールではこちらが標準形で、共変量の追加も、多群・多期間への一般化（二元固定効果）も、標準誤差の調整も、この枠組みにそのまま乗る。
+
+標準誤差の算出には注意が必要である。パネルでは同じデバイスの誤差が日をまたいで相関するため、`lm` の既定の標準誤差は過小評価になりやすい。標準的な対処はデバイス単位のクラスターロバスト標準誤差だが、クラスター数が少ないと妥当性に乏しく、2ユニットのDiDには適用しにくい。系列相関や個票の構造を使う別の方法が必要になる。
+
+## 対照の選定における恣意性
+
+最後に、本記事のDiDに残る問題を挙げる。対照にAndroidを選んだ理由は、対照群の条件・交絡構造の近さ・ボリュームの3点だったが、いずれも分析者の定性判断であって、データによる裏付けはない。対照候補は10デバイスあり、pc-web を選べば推定値は変わるし、10デバイスを等重みで平均しても変わる。1つを選ぶのも等重みで均すのも恣意的だとすれば、残る道は、事前期間の再現度を基準に対照の重みをデータから決めることである。それが次の記事で扱う合成コントロール法（Synthetic Control Method; SCM）である。
+
+## R code
+
+[前回の記事](/posts/causal-synthetic-data-design/)で生成した `panel_parallel.csv` と `panel_divergent.csv` を用いる。
+
+```r
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+att_true <- 0.01049 # 真値ATT
+
+panel <- bind_rows(
+  parallel = read_csv("panel_parallel.csv"),
+  divergent = read_csv("panel_divergent.csv"),
+  .id = "variant"
+)
+
+# 事前期間のギャップ傾き検定（iOS − Android）
+panel |>
+  filter(device %in% c("ios", "android"), !post) |>
+  pivot_wider(
+    names_from = device,
+    values_from = complete_rate,
+    id_cols = c(variant, date)
+  ) |>
+  mutate(
+    gap = ios - android,
+    t_frac = as.integer(date - min(date)) / as.integer(max(date) - min(date)),
+    .by = variant
+  ) |>
+  reframe(
+    broom::tidy(lm(gap ~ t_frac, data = pick(everything()))),
+    .by = variant
+  ) |>
+  filter(term == "t_frac") |>
+  select(variant, estimate, p.value)
+#> variant     estimate   p.value
+#> parallel   -0.000806   0.68
+#> divergent   0.0129     2.1e-11
+
+# DiD（7日窓、二項分散によるCI）
+panel |>
+  mutate(k_post = 7) |>
+  filter(
+    date < date_treat + k_post,
+    device %in% c("ios", "android")
+  ) |>
+  mutate(period = if_else(post, "post", "pre")) |>
+  summarise(
+    complete = sum(complete),
+    impression = sum(impression),
+    .by = c(k_post, variant, device, period)
+  ) |>
+  mutate(
+    rate = complete / impression,
+    var_rate = rate * (1 - rate) / impression
+  ) |>
+  pivot_wider(
+    names_from = period,
+    values_from = c(rate, var_rate),
+    id_cols = c(k_post, variant, device)
+  ) |>
+  mutate(
+    diff = rate_post - rate_pre,
+    var_diff = var_rate_post + var_rate_pre
+  ) |>
+  pivot_wider(
+    names_from = device,
+    values_from = c(diff, var_diff),
+    id_cols = c(k_post, variant)
+  ) |>
+  mutate(
+    estimate = diff_ios - diff_android,
+    se = sqrt(var_diff_ios + var_diff_android),
+    ci_lower = estimate - qnorm(0.975) * se,
+    ci_upper = estimate + qnorm(0.975) * se,
+    covered = ci_lower <= att_true & att_true <= ci_upper
+  )
+#> variant     estimate       se  ci_lower  ci_upper  covered
+#> parallel     0.01306  0.00280   0.00757   0.01854  TRUE
+#> divergent    0.01792  0.00273   0.01256   0.02327  FALSE
+
+# 回帰形式: 交互作用係数が DiD 推定量に一致（parallel、7日窓）
+panel |>
+  filter(
+    variant == "parallel",
+    date < date_treat + 7,
+    device %in% c("ios", "android")
+  ) |>
+  mutate(treated = device == "ios") |>
+  lm(complete_rate ~ treated * post, data = _, weights = impression) |>
+  broom::tidy() |>
+  filter(term == "treatedTRUE:postTRUE") |>
+  select(term, estimate)
+#> term                   estimate
+#> treatedTRUE:postTRUE    0.01306
+```
