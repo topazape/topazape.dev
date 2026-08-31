@@ -2,7 +2,7 @@
 title: "差分の差分法(DiD)による効果検証"
 draft: true
 draft-mode: unlinked
-date: "2026-10-07"
+date: "2026-10-14"
 categories: ["causal-inference", "statistics"]
 ---
 
@@ -42,10 +42,12 @@ panel <- bind_rows(
 
 ## DiD推定量
 
-処置群はiOSに固定し、対照に使うデバイスを $c$ と置く。デバイス $d$、期間 $W \in \{\text{pre}, \text{post}\}$ の完再生率を $\bar{Y}_{d,W} = \sum_{t \in W} x_{dt} \big/ \sum_{t \in W} n_{dt}$ とする（$n$ はインプレッション数、$x$ は完再生数）。DiDの推定量は前後差の差になる。
+処置群はiOSに固定し、対照に使うデバイスを $c$ と置く。デバイス $d$、期間 $W \in \{\text{pre}, \text{post}\}$ の完再生率を $\bar{Y}_{d,W} = \sum_{t \in W} x_{dt} \big / \sum_{t \in W} n_{dt}$ とする（$n$ はインプレッション数、$x$ は完再生数）。DiDの推定量は前後差の差になる。
 
 $$
-  \hat{\tau}_{\text{DiD}} = \left(\bar{Y}_{\text{iOS},\text{post}} - \bar{Y}_{\text{iOS},\text{pre}}\right) - \left(\bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}}\right)
+  \hat{\tau}_{\text{DiD}}
+  = \left( \bar{Y}_{\text{iOS},\text{post}} - \bar{Y}_{\text{iOS},\text{pre}} \right)
+                            - \left( \bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}} \right)
 $$
 
 $\bar{Y}_{d,W}$ の期待値が、デバイス水準 $\mu_d$、時間効果 $\lambda_W$、処置効果 $\tau$ の加法構造を持つとき、引き算で消える項は次のとおり。
@@ -63,7 +65,8 @@ $\bar{Y}_{d,W}$ の期待値が、デバイス水準 $\mu_d$、時間効果 $\la
 時間効果がデバイス共通であること。トレンドに限らず一時的な変動も $\lambda_W$ に含まれるので、教科書で共通ショック仮定と呼ばれる内容もここに入る。反実仮想で書くと
 
 $$
-  \mathbb{E}\left[\bar{Y}^0_{\text{iOS},\text{post}} - \bar{Y}^0_{\text{iOS},\text{pre}}\right] = \mathbb{E}\left[\bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}}\right]
+  \mathbb{E}\left[ \bar{Y}^0_{\text{iOS},\text{post}} - \bar{Y}^0_{\text{iOS},\text{pre}} \right]
+  = \mathbb{E}\left[ \bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}} \right]
 $$
 
 となる（$\bar{Y}^0$ は処置なしの世界の値）。左辺の post 項は、処置が実際に行われた世界では観測できない反実仮想であるため、この等式をデータから直接検証することはできない。事前期間の挙動から確からしさを確認することはできるが、成立そのものの証明は原理的に不可能である。
@@ -167,7 +170,8 @@ panel |>
 定量的に判定するため、事前期間の日次ギャップ $D_t$ に直線を当てはめ、その傾きがゼロかどうかを検定する。横軸には経過日数そのものではなく、事前期間の開始で0、終了で1になるようスケールした $t / T_{\text{pre}}$ を使う。こうすると傾き $\beta$ が「事前期間全体で開くギャップ幅」として読める。
 
 $$
-  D_t = \alpha + \beta \cdot \frac{t}{T_{\text{pre}}} + \varepsilon_t, \qquad H_0: \beta = 0
+  D_t = \alpha + \beta \cdot \frac{t}{T_{\text{pre}}}
+        + \varepsilon_t, \qquad H_0: \beta = 0
 $$
 
 ```{r}
@@ -289,7 +293,7 @@ did |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-parallel の推定値は $+1.31$pp、95%CIは $[+0.76, +1.85]$ である。CIは0を含まないので、リリース後1週間の時点で効果は有意であり、かつ真値 $+1.049$pp をカバーしている。点推定の $+0.26$pp の上振れはSE $0.28$pp の $0.9 \sigma$ にあたり、ノイズの範囲に収まる。一方、divergent の推定値は $+1.79$pp、95%CIは $[+1.26, +2.33]$ で、真値を含まない。
+parallel の推定値は $+1.31$pp、95%CIは $[+0.76,+1.85]$ である。CIは0を含まないので、リリース後1週間の時点で効果は有意であり、かつ真値 $+1.049$pp をカバーしている。点推定の $+0.26$pp の上振れはSE $0.28$pp の $0.9 \sigma$ にあたり、ノイズの範囲に収まる。一方、divergent の推定値は $+1.79$pp、95%CIは $[+1.26,+2.33]$ で、真値を含まない。
 
 もし生系列の図だけで平行トレンドを判断し、移動平均や傾き検定を飛ばしていたら、divergent でも $+1.79$pp を自信を持って報告する流れになっていたと思われる。
 

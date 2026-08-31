@@ -2,7 +2,7 @@
 title: "合成コントロール法(SCM): 対照の選択から重みの推定へ"
 draft: true
 draft-mode: unlinked
-date: "2026-10-21"
+date: "2026-10-28"
 categories: ["causal-inference", "statistics"]
 ---
 
@@ -40,13 +40,14 @@ panel <- read_csv(
 10台の対照デバイスをdonorと呼ぶ。日 $t$ におけるdonor $j$ の完再生率を $Y_{jt}$ ($j = 1, \dots, J$、$J = 10$)、iOSの完再生率を $Y_{\text{iOS},t}$ と書く。合成対照は、donorの凸結合、すなわち非負で総和が1の重み $w_j$ による重み付き平均として作る。
 
 $$
-  \hat{Y}^{\text{synth}}_{t} = \sum_{j=1}^{J} w_j\, Y_{jt}, \qquad w_j \geq 0, \quad \sum_{j=1}^{J} w_j = 1
+  \hat{Y}^{\text{synth}}_{t} = \sum_{j=1}^{J} w_j\, Y_{jt}, \qquad w_j
+                             \geq 0, \quad \sum_{j=1}^{J} w_j = 1
 $$
 
 重み $w_j$ は、事前期間のiOSの系列をどれだけ再現できるかで決める。リリース日を $T$、事前期間の日数を $T_{\text{pre}}$ (本データでは182日)として、基準は事前期間の平均二乗予測誤差(mean squared prediction error; 以後MSPE)
 
 $$
-  \frac{1}{T_{\text{pre}}} \sum_{t < T} \left( Y_{\text{iOS},t} - \sum_{j} w_j\, Y_{jt} \right)^2
+  \frac{1}{T_{\text{pre}}} \sum_{t<T} \left( Y_{\text{iOS},t} - \sum_{j} w_j\, Y_{jt} \right)^2
 $$
 
 の、凸結合の制約下での最小化である。
