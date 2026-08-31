@@ -1,5 +1,5 @@
 ---
-title: "How Close Can a Before/After Comparison Get to the Truth?"
+title: "How Close Can a Pre-Post Comparison Get to the Truth?"
 subtitle: "A Synthetic Panel with Known Ground Truth"
 draft: true
 draft-mode: unlinked
@@ -93,7 +93,7 @@ panel <- panel_gen |>
 ```
 
 In this series, several approaches to estimating the effect are applied to the same dataset.
-This first article builds that dataset and works through the before/after comparison that everyone tries first.
+This first article builds that dataset and works through the pre-post comparison that everyone tries first.
 
 Suppose you are a data scientist at a video streaming service that runs on a wide range of devices.
 
@@ -110,7 +110,7 @@ So, can we look at this panel and say "the feature lifted the completion rate by
 
 This article does two things:
 
-1. Before/after comparison: compute the estimate everyone tries first, and confirm with numbers that it cannot separate an effect from everything else moving at the same time.
+1. Pre-post comparison: compute the estimate everyone tries first, and confirm with numbers that it cannot separate an effect from everything else moving at the same time.
    As we'll see, running it on a date where nothing was released produces an "effect" of $+0.62$ percentage points (pp from here on), around 60% of the true effect, and nothing in the data marks it as spurious.
 
 2. Synthetic data design: build the validation dataset used throughout this series.
@@ -138,13 +138,15 @@ This boundary matters later, in the sanity check on the size of the true effect.
 One more assumption: whether a play counts as complete is settled within the same day.
 Pauses are assumed to be short, so a play that starts on day $t$ is resolved as complete or incomplete within day $t$.
 
-## A before/after comparison on iOS alone
+## A pre-post comparison on iOS alone
 
 The simplest way to measure the effect is to compare the completion rates before and after the release.
 Pick an anchor date $t_0$ and time window lengths $k_{\text{pre}}, k_{\text{post}}$, then compute the following difference:
 
 $$
-  \hat{\Delta}(t_0;\, k_{\text{pre}}, k_{\text{post}}) = \frac{\sum_{t \in W_{\text{post}}} x_t}{\sum_{t \in W_{\text{post}}} n_t} - \frac{\sum_{t \in W_{\text{pre}}} x_t}{\sum_{t \in W_{\text{pre}}} n_t}
+  \hat{\Delta}(t_0;\, k_{\text{pre}}, k_{\text{post}})
+  = \frac{\sum_{t \in W_{\text{post}}} x_t}{\sum_{t \in W_{\text{post}}} n_t}
+                                                         - \frac{\sum_{t \in W_{\text{pre}}} x_t}{\sum_{t \in W_{\text{pre}}} n_t}
 $$
 
 Here, $n_t$ and $x_t$ are the impressions and completes for iOS on day $t$, with the time windows defined as $W_{\text{pre}} = [t_0 - k_{\text{pre}},\, t_0)$ and $W_{\text{post}} = [t_0,\, t_0 + k_{\text{post}})$.
@@ -180,7 +182,7 @@ panel |>
 ```
 
 @fig-ios-series shows three movements mixed together in the series: a weekly cycle that dips 0.4 to 0.6pp on weekends, a slow trend that drifts down by about 0.6pp over the eight months, and daily noise with a standard deviation of around 0.4pp.
-A before/after difference picks up all three, with no way to tell them apart from the treatment effect.
+A pre-post difference picks up all three, with no way to tell them apart from the treatment effect.
 
 @tbl-naive-grid shows how much gets picked up: four time windows anchored at the release date, and four more at the placebo anchor date 13 weeks earlier, eight estimates in total.
 The three shorter windows are the same on both sides.
@@ -244,7 +246,7 @@ grid <- tribble(
 ```{r}
 #| label: tbl-naive-grid
 #| tbl-cap: >-
-#|   A before/after comparison on iOS across anchor dates and time window lengths.
+#|   A pre-post comparison on iOS across anchor dates and time window lengths.
 #| echo: false
 #| message: false
 
@@ -280,8 +282,8 @@ A long window imports the trend instead: with 182 days before the release and 61
 And in both cases, sampling noise rides on top.
 
 The key point is that there is no way to separate these three components from the treatment effect using this series alone.
-The question a before/after comparison answers is "did the completion rate change over time," and the feature is only one of the things that changed during that time.
-A before/after comparison on observational data is not a stand-in for the counterfactual.
+The question a pre-post comparison answers is "did the completion rate change over time," and the feature is only one of the things that changed during that time.
+A pre-post comparison on observational data is not a stand-in for the counterfactual.
 
 ## Designing the synthetic data
 
@@ -298,10 +300,10 @@ Preventing an exit could in reality extend the session and add exposure, but gen
 ### Design requirements
 
 1. The true treatment effect is known.
-   Every estimator in this series is checked against it, and the first to be scored is the set of eight before/after estimates above.
+   Every estimator in this series is checked against it, and the first to be scored is the set of eight pre-post estimates above.
 
 2. Devices differ in level while sharing the weekly cycle and the slow trend.
-   This is exactly the confounding structure that broke the before/after comparison, and at the same time the structure that comparison-based methods rely on.
+   This is exactly the confounding structure that broke the pre-post comparison, and at the same time the structure that comparison-based methods rely on.
 
 3. The iOS level sits inside the convex hull of the control devices, that is, between the minimum and the maximum of the controls.
    Why this matters is explained in the third article (SCM); here it is only stated as a requirement.
@@ -312,11 +314,14 @@ The panel is generated directly as device-by-day aggregate cells; no individual 
 Users exist only as a per-device volume scale $M_d$.
 
 $$
-  n_{dt} \sim \text{Poisson}(1.5\, M_d), \qquad x_{dt} \sim \text{Binomial}(n_{dt},\, p_{dt})
+  n_{dt} \sim \text{Poisson}(1.5\, M_d), \qquad x_{dt}
+         \sim \text{Binomial}(n_{dt},\, p_{dt})
 $$
 
 $$
-  \text{logit}\, p_{dt} = \alpha_d + w_{\text{dow}(t)} + \gamma \cdot \frac{t}{T_{\text{total}}} + \tau \cdot 1\{d = \text{ios},\ t \geq T\}
+  \text{logit}\, p_{dt} = \alpha_d + w_{\text{dow}(t)} + \gamma
+                          \cdot \frac{t}{T_{\text{total}}} + \tau
+                          \cdot 1\{d = \text{ios},\ t \geq T\}
 $$
 
 $n_{dt}$ is the number of impressions for device $d$ on day $t$, $x_{dt}$ is the number of completes, and $p_{dt}$ is the probability that one impression ends as a complete.
@@ -401,7 +406,9 @@ The true value used here is the average treatment effect on the treated (ATT), o
 Concretely, for each iOS post-period cell, take the difference between the generating rate with $\tau$ and the generating rate without it, then average those differences weighted by impressions.
 
 $$
-  \text{ATT} = \frac{\sum_{t \geq T} n_{\text{ios},t} \left[ \sigma(\ell_{\text{ios},t}) - \sigma(\ell_{\text{ios},t} - \tau) \right]}{\sum_{t \geq T} n_{\text{ios},t}} = +1.049 \text{ pp}
+  \text{ATT}
+  = \frac{\sum_{t \geq T} n_{\text{ios},t} \left[ \sigma(\ell_{\text{ios},t}) - \sigma(\ell_{\text{ios},t} - \tau) \right]}{\sum_{t \geq T} n_{\text{ios},t}}
+             = +1.049 \text{ pp}
 $$
 
 $\sigma$ is the logistic function and $\ell$ the linear predictor including the treatment.
@@ -437,11 +444,14 @@ With synthetic data, both the treated generating rate $p_{dt} = \sigma(\ell_{dt}
 Replacing the completes inside $\hat{\Delta}$ with these rates gives the expectation conditional on the impression counts, and that expectation splits exactly into a treatment component and a contamination component.
 
 $$
-  \hat{\Delta} = \underbrace{\left[ m(W_{\text{post}}) - m(W_{\text{pre}}) \right] - \left[ m^0(W_{\text{post}}) - m^0(W_{\text{pre}}) \right]}_{\text{treatment}} + \underbrace{m^0(W_{\text{post}}) - m^0(W_{\text{pre}})}_{\text{contamination}} + \text{noise}
+  \hat{\Delta}
+  = \underbrace{\left[ m(W_{\text{post}}) - m(W_{\text{pre}}) \right] - \left[ m^0(W_{\text{post}}) - m^0(W_{\text{pre}}) \right]}_{\text{treatment}}
+                 + \underbrace{m^0(W_{\text{post}}) - m^0(W_{\text{pre}})}_{\text{contamination}}
+                 + \text{noise}
 $$
 
 Here $m(W) = \sum_{t \in W} n_t p_t / \sum_{t \in W} n_t$, and $m^0$ is the same quantity computed with $p^0$.
-The contamination term is the before/after difference in a world where $\tau = 0$; the influence of the trend and of the day-of-week composition of the window collects here.
+The contamination term is the pre-post difference in a world where $\tau = 0$; the influence of the trend and of the day-of-week composition of the window collects here.
 The noise is the residual, the realized value minus its expectation.
 
 ```{r}

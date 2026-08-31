@@ -31,12 +31,12 @@ panel <- bind_rows(
 The [previous article](/posts/causal-synthetic-data-design/) set up a scenario in which an AVOD service released an ad pause feature on 2026-06-01, on iOS only, and generated a panel of daily ad completion rates for all 11 devices.
 The true effect of the feature was set to +1.049 percentage points (pp from here on) as the ATT (average treatment effect on the treated).
 
-A simple before/after comparison on this data failed to recover the true value.
+A simple pre-post comparison on this data failed to recover the true value.
 A date with no release produced an "effect" of +0.62pp, suggesting that the day-of-week cycle, the trend, and noise had leaked into the difference.
-One reason before/after comparisons fail is exactly this contamination by time variation other than the treatment.
+One reason pre-post comparisons fail is exactly this contamination by time variation other than the treatment.
 
 What if there were data from another device exposed to the same time variation?
-Subtracting that device's before/after difference from the iOS one should cancel just the contamination.
+Subtracting that device's pre-post difference from the iOS one should cancel just the contamination.
 This is the idea behind the well-known difference-in-differences (DiD) approach.
 So this time, the true causal effect is estimated with DiD.
 
@@ -49,11 +49,13 @@ This article does the following three things:
 ## The DiD estimator
 
 The treated group is fixed to iOS, and the device used as the control is denoted $c$.
-For device $d$ and period $W \in \{\text{pre}, \text{post}\}$, define the completion rate as $\bar{Y}_{d,W} = \sum_{t \in W} x_{dt} \big/ \sum_{t \in W} n_{dt}$, where $n$ is the number of impressions and $x$ the number of completes.
-The DiD estimator is the difference of the before/after differences.
+For device $d$ and period $W \in \{\text{pre}, \text{post}\}$, define the completion rate as $\bar{Y}_{d,W} = \sum_{t \in W} x_{dt} \big / \sum_{t \in W} n_{dt}$, where $n$ is the number of impressions and $x$ the number of completes.
+The DiD estimator is the difference of the pre-post differences.
 
 $$
-  \hat{\tau}_{\text{DiD}} = \left(\bar{Y}_{\text{iOS},\text{post}} - \bar{Y}_{\text{iOS},\text{pre}}\right) - \left(\bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}}\right)
+  \hat{\tau}_{\text{DiD}}
+  = \left( \bar{Y}_{\text{iOS},\text{post}} - \bar{Y}_{\text{iOS},\text{pre}} \right)
+                            - \left( \bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}} \right)
 $$
 
 When the expectation of $\bar{Y}_{d,W}$ has an additive structure in a device level $\mu_d$, a time effect $\lambda_W$, and a treatment effect $\tau$, the terms that the subtractions cancel are as follows.
@@ -65,7 +67,7 @@ When the expectation of $\bar{Y}_{d,W}$ has an additive structure in a device le
   | DiD         |                                           |                                                   | $\tau$                                                  |
 
 The difference along each row cancels $\mu_d$, and the difference between the rows cancels $\lambda_W$.
-The day-of-week cycle and the trend that broke the before/after comparison both belong to $\lambda_W$, so they cancel whenever this structure holds.
+The day-of-week cycle and the trend that broke the pre-post comparison both belong to $\lambda_W$, so they cancel whenever this structure holds.
 This table, however, rests on the following two conditions.
 
 ### The parallel trends assumption
@@ -75,7 +77,8 @@ $\lambda_W$ contains not only trends but also transient fluctuations, so what te
 Written in counterfactual terms,
 
 $$
-  \mathbb{E}\left[\bar{Y}^0_{\text{iOS},\text{post}} - \bar{Y}^0_{\text{iOS},\text{pre}}\right] = \mathbb{E}\left[\bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}}\right]
+  \mathbb{E}\left[ \bar{Y}^0_{\text{iOS},\text{post}} - \bar{Y}^0_{\text{iOS},\text{pre}} \right]
+  = \mathbb{E}\left[ \bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}} \right]
 $$
 
 where $\bar{Y}^0$ is the value in the world without the treatment.
@@ -105,11 +108,11 @@ All three, however, rest on the analyst's prior knowledge, with no backing from 
 The analysis uses all 182 days of data before the release (the pre window) and the 7 days from the release date (the post window).
 
 The post window is 7 days because that is the shortest length in which the days of the week complete one full cycle.
-If the pre and post windows each contain every day of the week in equal proportion, the day-of-week effect drops out the moment the before/after difference is taken.
+If the pre and post windows each contain every day of the week in equal proportion, the day-of-week effect drops out the moment the pre-post difference is taken.
 Both windows here contain every day of the week in equal proportion, so this contamination does not occur.
 A day-of-week-balanced window could also be 14 or 28 days; here the shortest, 7 days, is used.
 
-Using the entire pre-period, in turn, is possible because the situation differs from the before/after comparison.
+Using the entire pre-period, in turn, is possible because the situation differs from the pre-post comparison.
 There, a long window pulled in the trend.
 In DiD, the common trend enters the control-side difference by the same amount and cancels, under parallel trends, the moment the difference is taken.
 Taking a long pre-period therefore has no downside; if anything it is a bargain, since the noise shrinks.
@@ -203,7 +206,8 @@ The horizontal axis is not raw elapsed days but $t / T_{\text{pre}}$, scaled to 
 The slope $\beta$ can then be read as the gap opened over the entire pre-period.
 
 $$
-  D_t = \alpha + \beta \cdot \frac{t}{T_{\text{pre}}} + \varepsilon_t, \qquad H_0: \beta = 0
+  D_t = \alpha + \beta \cdot \frac{t}{T_{\text{pre}}}
+        + \varepsilon_t, \qquad H_0: \beta = 0
 $$
 
 ```{r}
@@ -334,10 +338,10 @@ did |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-The parallel estimate is $+1.31$pp with a 95% CI of $[+0.76, +1.85]$.
+The parallel estimate is $+1.31$pp with a 95% CI of $[+0.76,+1.85]$.
 The CI excludes 0, so the effect is significant one week after the release, and it covers the true value of $+1.049$pp.
 The $+0.26$pp overshoot of the point estimate is $0.9 \sigma$ against the SE of $0.28$pp, within the range of noise.
-The divergent estimate, in contrast, is $+1.79$pp with a 95% CI of $[+1.26, +2.33]$, which does not contain the true value.
+The divergent estimate, in contrast, is $+1.79$pp with a 95% CI of $[+1.26,+2.33]$, which does not contain the true value.
 
 Had parallel trends been judged from the raw-series plot alone, skipping the moving average and the slope test, the likely outcome is a confident report of $+1.79$pp on divergent as well.
 
