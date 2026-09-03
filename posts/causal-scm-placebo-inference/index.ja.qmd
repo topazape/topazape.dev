@@ -1,0 +1,474 @@
+---
+title: "合成コントロール法(SCM): 対照の選択から重みの推定へ"
+draft: true
+draft-mode: unlinked
+date: "2026-10-28"
+categories: ["causal-inference", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+att_true <- 0.01049 # 真値ATT(+1.049pp)。データ生成式から導出した値
+
+panel <- read_csv(
+  "../../data/causal-synthetic-data-design/panel_parallel.csv",
+  show_col_types = FALSE
+)
+```
+
+[前回の記事](/posts/causal-did-parallel-trends/)では、iOSだけにリリースされた広告一時停止機能の効果を、差分の差分法(difference-in-differences; 以後DiD)で推定した。対照にAndroidを使った7日窓の推定値は+1.31パーセントポイント(以後 pp)で、95%CIは処置効果の真値であるATT(処置群における平均処置効果)の+1.049ppをカバーした。
+
+残った問題は、対照の選び方である。Androidを選んだ理由は対照群の条件・交絡構造の近さ・ボリュームの3点だったが、いずれも分析者の定性判断で、データの裏付けがない。対照候補は10デバイスあり、1台を選ぶのも、10台を等重みで平均するのも、恣意的であることに変わりはない。
+
+合成コントロール法(synthetic control method; 以後SCM)は、対照にかける重みをデータに決めさせる。基準は事前期間の再現度で、処置前のiOSの系列を最もよく再現する対照の重み付き平均を作り、処置後はそれを「処置がなかった世界のiOS」の代役として使う。
+
+この記事では、以下3つについて検証する。
+
+1. SCMの推定量を定義し、重みに課される制約が何を要求するかと、DiDとの対応を整理する。
+2. [{tidysynth}](https://cran.r-project.org/package=tidysynth)で重みを推定し、その配分と事前期間の適合を確認したうえで、事後61日の平均ギャップを真値+1.049ppと比較する。
+3. in-space placebo検定で推論し、p値の分解能が対照候補の数で頭打ちになるという限界を確認する。
+
+手順は[Abadie, Diamond, and Hainmueller (2010)](https://doi.org/10.1198/jasa.2009.ap08746)の標準形(重み推定 → ギャップの確認 → in-space placeboによる順位づけ)に限定し、実装には{tidysynth}をそのまま使う。切片や外挿を許す拡張(augmented SCMなど)には本記事では立ち入らない。
+
+## SCM推定量
+
+10台の対照デバイスをdonorと呼ぶ。日 $t$ におけるdonor $j$ の完再生率を $Y_{jt}$ ($j = 1, \dots, J$、$J = 10$)、iOSの完再生率を $Y_{\text{iOS},t}$ と書く。合成対照は、donorの凸結合、すなわち非負で総和が1の重み $w_j$ による重み付き平均として作る。
+
+$$
+  \hat{Y}^{\text{synth}}_{t} = \sum_{j=1}^{J} w_j\, Y_{jt}, \qquad w_j
+                             \geq 0, \quad \sum_{j=1}^{J} w_j = 1
+$$
+
+重み $w_j$ は、事前期間のiOSの系列をどれだけ再現できるかで決める。リリース日を $T$、事前期間の日数を $T_{\text{pre}}$ (本データでは182日)として、基準は事前期間の平均二乗予測誤差(mean squared prediction error; 以後MSPE)
+
+$$
+  \frac{1}{T_{\text{pre}}} \sum_{t<T} \left( Y_{\text{iOS},t} - \sum_{j} w_j\, Y_{jt} \right)^2
+$$
+
+の、凸結合の制約下での最小化である。
+
+処置後の各日については、iOSの実測値 $Y_{\text{iOS},t}$ と合成対照 $\hat{Y}^{\text{synth}}_t$ の差(ギャップ)を、その日の効果の推定値とする。
+
+$$
+  \hat{\tau}_t = Y_{\text{iOS},t} - \hat{Y}^{\text{synth}}_t \qquad (t \geq T)
+$$
+
+ATTの推定値は、事後期間の $\hat{\tau}_t$ の単純平均である。
+
+このギャップを効果と読むための条件は2つある。1つは、[DiDの記事](/posts/causal-did-parallel-trends/)で置いた対照群の条件がdonor 10台すべてで成り立つこと、つまり全donorが未処置で、処置の影響の波及(spillover)を受けていないことである。iOSアプリ内のUI変更が他デバイスの完再生率へ波及する経路は考えにくく、Android 1台に対して置いた判断はそのまま10台へ広げられる。もう1つは、処置の予期による事前期間の汚染がないこと(no anticipation)である。重みを事前期間の再現で決める以上、事前期間が既に処置の影響を含んでいれば、その再現は反実仮想の再現にならない。本件のUI機能はリリースまでユーザーから見えないので、この懸念も当たらない。
+
+### DiDとの対応
+
+donorが1台しかなければ、制約から重みは1となり、合成対照はそのdonorの系列そのものになる。つまり、[DiDの記事](/posts/causal-did-parallel-trends/)が対照に使ったAndroidの系列は、SCMから見ればdonorが1台の特殊ケースにあたる。ただし、推定量まで同じになるわけではない。違いを次の表に整理する。
+
+  |                      | DiD                       | SCM                                    |
+  | -------------------- | ------------------------- | -------------------------------------- |
+  | 対照系列             | 分析者が選んだAndroid 1台 | 重みをデータが決めるdonor 10台の凸結合 |
+  | 水準差の扱い         | 前後差をとる時点で消える  | 差し引かれず、水準ごと再現する         |
+  | 事前期間の情報       | 事前平均という1点         | 日次系列の全体                         |
+  | 反実仮想を支える仮定 | 平行トレンド              | 事前を再現した要因構造が事後も続くこと |
+
+本質的な違いは水準差の扱いにある。SCMの定式化には切片項がなく、水準差はギャップにそのまま残る。実際、donorをAndroid 1台に絞って計算すると、事後61日の平均ギャップは+2.20ppとなり、真値+1.049ppを事前からの水準差(約+1pp)の分だけ上回る。
+
+切片で吸収できない以上、合成対照は水準そのものを再現しなければならない。凸結合の値は各時点でdonorの最小と最大の間に収まり、外挿ができない。したがって水準の再現が可能なのは、処置ユニットの水準がその範囲(凸包)の内側にあるときに限られる。[合成データを設計した記事](/posts/causal-synthetic-data-design/)でiOSの水準を対照の凸包内に置いたのは、このための布石である。iOSの事前水準93.1%は、対照の91.5〜97.1%の内側にある。
+
+## 重みの推定
+
+{tidysynth}には、重みを決める入力として予測子と呼ぶ集約量を与える。本記事の予測子は事前期間の月次平均完再生率(2025-12〜2026-05の6点)で、日次のノイズと曜日周期を均しながら水準とトレンドの形を残す集約単位として月を使う。最適化窓は事前期間182日の全体である。内部は予測子ごとの重みを介した二段の最適化([Abadie, Diamond, and Hainmueller 2010](https://doi.org/10.1198/jasa.2009.ap08746))だが、重みを選ぶ最終的な基準は前節のMSPEで変わらないので、定式化の詳細には本記事では立ち入らない。
+
+```{r}
+#| label: scm-fit
+#| include: false
+#| cache: true
+
+sc <- panel |>
+  tidysynth::synthetic_control(
+    outcome = complete_rate,
+    unit = device,
+    time = date,
+    i_unit = "ios",
+    i_time = date_treat - 1,
+    generate_placebos = TRUE
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2025-12-01"),
+      lubridate::ymd("2025-12-31"),
+      by = "day"
+    ),
+    rate_2025_12 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-01-01"),
+      lubridate::ymd("2026-01-31"),
+      by = "day"
+    ),
+    rate_2026_01 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-02-01"),
+      lubridate::ymd("2026-02-28"),
+      by = "day"
+    ),
+    rate_2026_02 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-03-01"),
+      lubridate::ymd("2026-03-31"),
+      by = "day"
+    ),
+    rate_2026_03 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-04-01"),
+      lubridate::ymd("2026-04-30"),
+      by = "day"
+    ),
+    rate_2026_04 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-05-01"),
+      lubridate::ymd("2026-05-31"),
+      by = "day"
+    ),
+    rate_2026_05 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_weights(
+    optimization_window = seq(
+      lubridate::ymd("2025-12-01"),
+      lubridate::ymd("2026-05-31"),
+      by = "day"
+    )
+  ) |>
+  tidysynth::generate_control()
+```
+
+```{r}
+#| label: tbl-weights
+#| tbl-cap: "推定されたdonorの重み。"
+#| echo: false
+#| message: false
+
+sc |>
+  tidysynth::grab_unit_weights() |>
+  arrange(desc(weight)) |>
+  gt::gt() |>
+  gt::fmt_number(columns = weight, decimals = 3) |>
+  gt::cols_label(unit = "donor", weight = gt::md("$w_j$")) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+@tbl-weights が推定された重みである。最大はandroidの0.41で、pc-webの0.16、mobile-webの0.12が続き、残る7台にも0.03〜0.08の小さい重みが付く。
+
+この配分は生成過程から説明できる。デバイス間の違いは水準と独立ノイズだけで、曜日周期と共通トレンドの形は全台が共有している。したがって、合成対照に求められるのはiOSの水準を再現することだけであり、重みはiOSより低水準のdonorと高水準のdonorとに分かれるはずである。実際、iOSより低水準の3台(android・pc-web・smart-tv-b)の重みは計0.65、高水準の7台は計0.35で、重み付き平均の事前水準は93.1%とiOSの事前水準に一致する。重みが特定の1台に集中せず広く分散するのは、ユニット間で独立な二項ノイズが平均で薄まり、事前期間MSPEがその分下がるためである。
+
+## ギャップと推定値
+
+事後の窓には、生成済みの61日をすべて使う。意思決定の場面なら、[DiDの記事](/posts/causal-did-parallel-trends/)と同じく7日で答えを出すことになる。ただし本記事の関心は意思決定ではなく、SCMが反実仮想をどれだけ再現するかを真値との比較で評価することにあり、この評価には事後の観測が多いほうがよい。
+
+```{r}
+#| label: fig-path
+#| fig-cap: "iOSの実測完再生率と合成対照。破線は機能リリース日(2026-06-01)。"
+#| echo: false
+#| message: false
+
+sc |>
+  tidysynth::grab_synthetic_control() |>
+  pivot_longer(c(real_y, synth_y), names_to = "series", values_to = "rate") |>
+  mutate(series = if_else(series == "real_y", "ios", "synthetic")) |>
+  ggplot(aes(x = time_unit, y = rate, color = series)) +
+  geom_vline(xintercept = date_treat, linetype = "dashed", color = "grey40") +
+  geom_line(linewidth = 0.4) +
+  scale_color_manual(values = c(ios = "tomato", synthetic = "darkslategray")) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 0.1)) +
+  labs(x = NULL, y = "completion rate", color = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top")
+```
+
+@fig-path が実測と合成対照の重ね描きである。事前期間の2本はほぼ見分けがつかず、リリース日を境に実測が上へ離れる。
+
+```{r}
+#| label: fig-gap
+#| fig-cap: "ギャップ(実測 − 合成対照)。点は日次、線は7日移動平均。破線はリリース日、点線は事後期間の真値+1.049pp。"
+#| echo: false
+#| message: false
+#| warning: false
+
+sc |>
+  tidysynth::grab_synthetic_control() |>
+  mutate(
+    gap = real_y - synth_y,
+    gap_ma = slider::slide_dbl(
+      gap,
+      mean,
+      .before = 3,
+      .after = 3,
+      .complete = TRUE
+    )
+  ) |>
+  ggplot(aes(x = time_unit)) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  annotate(
+    "segment",
+    x = date_treat,
+    xend = lubridate::ymd("2026-07-31"),
+    y = att_true,
+    yend = att_true,
+    linetype = "dotted",
+    color = "grey40"
+  ) +
+  geom_vline(xintercept = date_treat, linetype = "dashed", color = "grey40") +
+  geom_point(aes(y = gap), size = 0.6, alpha = 0.4, color = "darkslategray") +
+  geom_line(aes(y = gap_ma), color = "tomato", linewidth = 0.5) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  scale_y_continuous(labels = scales::label_number(scale = 100)) +
+  labs(x = NULL, y = "gap (pp)") +
+  theme_classic(base_family = "ubuntu", base_size = 13)
+```
+
+差をとった @fig-gap のほうが読みやすい。事前期間のギャップは、平均で−0.03pp、二乗平均平方根(root mean squared error; RMSE)で0.52ppであり、7日移動平均は0の周りに張り付く。リリース日を境に移動平均は+1pp強へ持ち上がり、事後61日の平均ギャップは+1.08pp、真値+1.049ppとの差は+0.03ppである。
+
+これで点推定は手に入った。次の問題は、この+1.08ppが偶然でないと言えるかである。
+
+## in-space placeboによる推論
+
+DiDでは、群と期間で分けた4つの完再生率の二項分散から標準誤差を計算してCIを作れた。SCMで同じことはできない。点推定の標準誤差に閉じた式が存在しないからである。理由は2つあり、1つは、重みが非負・総和1という不等式制約付き最適化の解であるため、解が制約の境界(いくつかの $w_j$ がちょうど0)に乗り得て、推定量がデータの非滑らかな関数になること。もう1つは、処置ユニット1台・donor固定という設定では、何を無限大に飛ばす漸近かという枠組み自体が定まらないことである([Abadie 2021](https://doi.org/10.1257/jel.20191450))。
+
+標準の代替がin-space placebo検定である。ギャップの帰無分布は数式で導けないので、効果がゼロと分かっているユニットに同じ手順を回し、その分布を実測で作る。
+
+例えばandroidを2026-06-01に処置されたユニットとみなし、残り10台({tidysynth}の実装ではiOSも含む)をdonorとして、同じ予測子・同じ窓で重みを推定し、ギャップ系列を計算する。androidに処置は存在しないので、このギャップは効果ゼロのときにこの手順が出す出力である。同じ計算を10台のdonorすべてで繰り返すと、iOSのギャップ1本とplaceboのギャップ10本が揃う。処置が本物なら、iOSのギャップだけがこの束から抜け出るはずである。
+
+なお、donor側のiOSの事後期間は実際の処置を含むが、その混入は平均的にはplaceboの事後MSPEを膨らませる側、つまりiOSの順位づけに不利な側に働く。
+
+```{r}
+#| label: fig-placebo
+#| fig-cap: "in-space placebo。灰は各donorを仮想的な処置ユニットとして再推定したギャップ、赤はiOSのギャップ。破線はリリース日。"
+#| echo: false
+#| message: false
+
+gaps <- sc |>
+  tidysynth::grab_synthetic_control(placebo = TRUE) |>
+  mutate(gap = real_y - synth_y)
+
+ggplot(mapping = aes(x = time_unit, y = gap, group = .id)) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  geom_vline(xintercept = date_treat, linetype = "dashed", color = "grey40") +
+  geom_line(
+    data = gaps |> filter(.placebo == 1),
+    linewidth = 0.3,
+    color = "grey60"
+  ) +
+  geom_line(
+    data = gaps |> filter(.placebo == 0),
+    linewidth = 0.5,
+    color = "tomato"
+  ) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  scale_y_continuous(labels = scales::label_number(scale = 100)) +
+  labs(x = NULL, y = "gap (pp)") +
+  theme_classic(base_family = "ubuntu", base_size = 13)
+```
+
+@fig-placebo を読むときの注意が1つある。事後ギャップの大きさをそのまま比べてはいけない。水準が凸包の端に近いdonor(最低水準のsmart-tv-bなど)は残りのユニットの凸結合では再現しにくく、事前期間からギャップが大きい。事前から合わないユニットが事後も合わないのは当然で、処置の証拠にはならない。
+
+そこで検定統計量には、事後MSPEと事前MSPEの比を使う。事前から適合が悪いユニットは分母も大きくなるので、比は膨らまない。全11ユニットの比を大きい順に並べ、処置ユニットの順位(rank)から次のp値を得る。
+
+$$
+  p = \frac{\text{rank}}{J + 1}
+$$
+
+これは、処置が11ユニットのどこに割り当てられてもおかしくなかったとみなしたときの、並べ替え検定の正確p値である。
+
+```{r}
+#| label: tbl-mspe
+#| tbl-cap: "in-space placeboの事後MSPE/事前MSPE比と順位。MSPEはpp²単位で表示。"
+#| echo: false
+#| message: false
+
+sc |>
+  tidysynth::grab_significance() |>
+  select(
+    unit_name,
+    pre_mspe,
+    post_mspe,
+    mspe_ratio,
+    rank,
+    fishers_exact_pvalue
+  ) |>
+  gt::gt() |>
+  gt::fmt_number(
+    columns = c(pre_mspe, post_mspe),
+    decimals = 2,
+    scale_by = 1e4
+  ) |>
+  gt::fmt_number(columns = mspe_ratio, decimals = 2) |>
+  gt::fmt_number(columns = fishers_exact_pvalue, decimals = 3) |>
+  gt::cols_label(
+    unit_name = "unit",
+    pre_mspe = "事前MSPE",
+    post_mspe = "事後MSPE",
+    mspe_ratio = "比",
+    rank = "順位",
+    fishers_exact_pvalue = gt::md("$p$")
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+iOSの比は5.08で1位であり、2位のandroid(1.39)を大きく引き離す。p値は $1/11 \approx 0.091$ となる。
+
+ここに分解能の限界がある。donorが10台なら、効果がどれほど明瞭でもp値は $1/11$ より下がらない。5%水準には原理的に届かず、p値の細かさを決めるのは効果の強さではなくdonorの数である。この検定は、有意性の判定というより、処置ユニットのギャップがplaceboの分布のどこに位置するかを示す順位づけとして読むのが実態に合う。
+
+## 検証できるのは事前期間だけ
+
+SCMで確認できるのは、事前期間をどれだけ再現できたかだけである。事後のギャップを効果と読むには、事前期間の適合を支えた要因構造が事後も続くという仮定が要る。これは事後の反実仮想に関する主張なので、検証できない。位置づけはDiDの平行トレンド仮定と同格であり、対照の選び方から恣意性を取り除いても、反実仮想を仮定で構成していることに変わりはない。
+
+事前の適合の良さは、この仮定の証明にならない。donorが十分に多ければ、ノイズへの過適合でも事前期間は再現できてしまうからである。本記事のデータでは、全ユニットが同じ曜日・トレンド構造を共有し、それが事後も変わらないことを、生成過程そのものから保証できる。実データにこの保証はない。合成データで手法の挙動を確かめられることと、実データで仮定を確かめられることは、別の話である。
+
+## 区間のない推論
+
+本記事で得られたのは、真値との差が+0.03ppの点推定と、MSPE比で1位という順位である。ただし不確実性の表現は順位ベースのp値にとどまり、DiDで作れたCIに相当する連続的な区間がない。SCMに区間を与える推論も、時間方向の置換に基づくconformal推論([Chernozhukov, Wüthrich, and Zhu 2021](https://doi.org/10.1080/01621459.2021.1920957))をはじめ複数提案されているが、いずれも冒頭で限定した標準手順の外にある。時間構造を明示的にモデル化し、反実仮想の予測とその区間を直接出す方法が、次の記事で扱うCausalImpactである。
+
+## Rコード
+
+分析はすべて[合成データを設計した記事](/posts/causal-synthetic-data-design/)の生成器が出力した `panel_parallel.csv` を読むだけで再現できる。
+
+```r
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+
+panel <- read_csv("panel_parallel.csv")
+
+# SCM: 予測子は事前期間の月次平均、最適化窓は事前期間全体
+# tidysynthは time <= i_time を事前期間として扱うので、i_timeにはリリース前日を渡す
+sc <- panel |>
+  tidysynth::synthetic_control(
+    outcome = complete_rate,
+    unit = device,
+    time = date,
+    i_unit = "ios",
+    i_time = date_treat - 1,
+    generate_placebos = TRUE
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2025-12-01"),
+      lubridate::ymd("2025-12-31"),
+      by = "day"
+    ),
+    rate_2025_12 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-01-01"),
+      lubridate::ymd("2026-01-31"),
+      by = "day"
+    ),
+    rate_2026_01 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-02-01"),
+      lubridate::ymd("2026-02-28"),
+      by = "day"
+    ),
+    rate_2026_02 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-03-01"),
+      lubridate::ymd("2026-03-31"),
+      by = "day"
+    ),
+    rate_2026_03 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-04-01"),
+      lubridate::ymd("2026-04-30"),
+      by = "day"
+    ),
+    rate_2026_04 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_predictor(
+    time_window = seq(
+      lubridate::ymd("2026-05-01"),
+      lubridate::ymd("2026-05-31"),
+      by = "day"
+    ),
+    rate_2026_05 = mean(complete_rate)
+  ) |>
+  tidysynth::generate_weights(
+    optimization_window = seq(
+      lubridate::ymd("2025-12-01"),
+      lubridate::ymd("2026-05-31"),
+      by = "day"
+    )
+  ) |>
+  tidysynth::generate_control()
+
+# donorの重み
+sc |>
+  tidysynth::grab_unit_weights() |>
+  arrange(desc(weight))
+#> unit            weight
+#> android         0.408
+#> pc-web          0.158
+#> mobile-web      0.120
+#> smart-tv-b      0.0806
+#> game-console    0.0505
+#> smart-tv-a      0.0401
+#> tv-web          0.0385
+#> android-tv      0.0372
+#> streaming-stick 0.0333
+#> smart-tv-c      0.0331
+
+# 事前期間の適合と事後の平均ギャップ
+sc |>
+  tidysynth::grab_synthetic_control() |>
+  mutate(period = if_else(time_unit >= date_treat, "post", "pre")) |>
+  summarise(
+    rmse = sqrt(mean((real_y - synth_y)^2)),
+    gap = mean(real_y - synth_y),
+    .by = period
+  )
+#> period     rmse        gap
+#> pre     0.00517  -0.000309
+#> post    0.0116    0.0108
+
+# in-space placebo: MSPE比の順位とp値
+sc |>
+  tidysynth::grab_significance() |>
+  select(unit_name, pre_mspe, post_mspe, mspe_ratio, rank, fishers_exact_pvalue)
+#> unit_name        pre_mspe   post_mspe  mspe_ratio  rank  fishers_exact_pvalue
+#> ios              0.0000267  0.000136        5.08      1                0.0909
+#> android          0.0000628  0.0000872       1.39      2                0.182
+#> streaming-stick  0.0000737  0.000102        1.38      3                0.273
+#> (以下略。donor 10台の比は0.93〜1.39に収まる)
+
+# donorをAndroid 1台に絞った場合: 事前からの水準差がそのままギャップに乗る
+panel |>
+  filter(date >= date_treat, device %in% c("ios", "android")) |>
+  pivot_wider(
+    names_from = device,
+    values_from = complete_rate,
+    id_cols = date
+  ) |>
+  summarise(gap = mean(ios - android))
+#> gap
+#> 0.0220
+```
