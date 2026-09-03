@@ -195,7 +195,7 @@ dependencies = []
 
 [[packages]]
 name = "bit64"
-version = "4.8.4"
+version = "4.8.6"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = [
@@ -896,7 +896,7 @@ dependencies = [
 
 [[packages]]
 name = "httr"
-version = "1.4.8"
+version = "1.4.9"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = [
@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[packages]]
 name = "litedown"
-version = "0.10"
+version = "0.11"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = [
@@ -1518,7 +1518,7 @@ dependencies = []
 
 [[packages]]
 name = "rmarkdown"
-version = "2.31"
+version = "2.32"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = [
@@ -1528,7 +1528,7 @@ dependencies = [
     { name = "htmltools", requirement = "(>= 0.5.1)" },
     "jquerylib",
     "jsonlite",
-    { name = "knitr", requirement = "(>= 1.43)" },
+    { name = "knitr", requirement = "(>= 1.50)" },
     { name = "tinytex", requirement = "(>= 0.31)" },
     { name = "xfun", requirement = "(>= 0.36)" },
     { name = "yaml", requirement = "(>= 2.1.19)" },
