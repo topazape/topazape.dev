@@ -1,0 +1,341 @@
+---
+title: "リスク比からオッズ比へ: ブランドリフトにおける統合スケールの選択"
+date: "2026-08-12"
+categories: ["brand-lift", "statistics", "meta-analysis"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+```
+
+これまでの記事では、単一のブランドリフト調査（Brand Lift Study; 以後 BLS）のリスク比（risk ratio; 以後 RR）について信頼区間（confidence interval; 以後 CI）を構成してきました。本記事の関心は別のところにあります。ベースラインの回答率が異なる調査をまたいで、効果をどう比較し、どう統合するかです。単一のキャンペーンの結果を広告主に報告するスケールと、複数の調査の結果を統合するスケールは目的が違うので、同じものである必要はありません。
+
+
+## 天井効果: ベースラインに依存する RR と絶対リフト
+
+$p_1 \leq 1$ なので、$RR = \frac{p_1}{p_0}$ の上限は $\frac{1}{p_0}$ です。$p_0 = 0.50$ の調査なら $RR$ は最大でも $2$、$p_0 = 0.05$ の調査なら $20$ まで出ます。到達できる $RR$ の上限は、広告の効果ではなくベースラインの性質で決まっています。
+
+絶対リフト $p_1 - p_0$ にも、向きが逆の同じ問題があり、その上限は $1 - p_0$ です。$p_0 = 0.80$ の調査では、広告がどれだけ効いていても $p_1 - p_0$ は $0.20$ を超えられません。
+
+つまり $RR$ も絶対リフトも、ベースラインの情報が数値そのものに混ざっています。ある調査の $RR = 1.30$ と別の調査の $RR = 1.15$ を並べて前者の方が効果が大きいと言うには、2 つのベースラインが同程度の制約しか課していないという仮定が必要ですが、BLS の調査間でこれが成り立つことはまずありません。
+
+
+## ベースラインに依存しない効果指標とスケールの固定
+
+$p_0$ が変わっても動かない効果指標はあるでしょうか。あります。ただし、効果が一定であると定義するスケールを 1 つ選ばなければならず、その選択自体がモデルの仮定になります。
+
+ロジスティック回帰モデルは、広告への曝露が肯定回答の対数オッズを定数 $\beta$ だけ動かすと仮定します。
+
+$$\text{logit}(p_1) = \text{logit}(p_0) + \beta$$
+
+このモデルの下では、オッズ比（odds ratio; 以後 OR） $OR = \exp(\beta)$ は $p_0$ に関わらず同じ値になります。$p_0$ と $OR$ が分かれば曝露群の率は
+
+$$p_1 = \frac{p_0 \cdot OR}{1 - p_0 + p_0 \cdot OR}$$
+
+と書けるので、$OR = 1.30$ を入れて $p_0$ を動かしてみます。
+
+| $p_0$ | $p_1$  | $RR$  | $p_1 - p_0$ | $OR$ |
+|-------|--------|-------|-------------|------|
+| 0.05  | 0.064  | 1.281 | 0.014       | 1.30 |
+| 0.10  | 0.126  | 1.262 | 0.026       | 1.30 |
+| 0.30  | 0.358  | 1.193 | 0.058       | 1.30 |
+| 0.50  | 0.565  | 1.130 | 0.065       | 1.30 |
+
+$OR$ は構成上一定です。$p_0$ が上がるにつれて $RR$ は $1.281$ から $1.130$ へ下がり、天井に圧縮されていきます。絶対リフトは逆に $0.014$ から $0.065$ へ上がります。同じ logit スケールの効果が、ベースラインの違いによって異なる $RR$ と $p_1 - p_0$ の値になるわけです。
+
+これは事実ではなくモデルの仮定です。広告への曝露が本当に logit スケールで働いているかどうかは、単一の 2×2 表からは検証できません。この仮定を採る理由は、調査をまたいだ比較に整合性を与えられるからで、正しいと分かっているからではありません。
+
+
+## オッズ比と log(OR) の分散
+
+オッズ比の定義は
+
+$$OR = \frac{p_1 / (1 - p_1)}{p_0 / (1 - p_0)}$$
+
+です。2×2 表の 4 つのセルを $a = x_1$、$b = n_1 - x_1$、$c = x_0$、$d = n_0 - x_0$ と書けば
+
+$$\widehat{OR} = \frac{a \cdot d}{b \cdot c}$$
+
+$$\log(\widehat{OR}) = \text{logit}(\hat{p}_1) - \text{logit}(\hat{p}_0)$$
+
+となります。$g(p) = \text{logit}(p) = \log(p) - \log(1-p)$ にデルタ法（delta method）を適用します。導関数は $g'(p) = \frac{1}{p(1-p)}$ なので
+
+$$\text{Var}(\text{logit}(\hat{p})) \approx \frac{1}{[p(1-p)]^2} \cdot \frac{p(1-p)}{n} = \frac{1}{n \, p(1-p)}$$
+
+となり、セル度数 $x = np$、$n - x = n(1-p)$ で書き直せば
+
+$$\text{Var}(\text{logit}(\hat{p})) = \frac{1}{x} + \frac{1}{n - x}$$
+
+です。$\hat{p}_1$ と $\hat{p}_0$ は独立なので、差の分散は和になります。
+
+$$\text{Var}(\log(\widehat{OR})) = \frac{1}{a} + \frac{1}{b} + \frac{1}{c} + \frac{1}{d}$$
+
+[リスク比へのデルタ法](/posts/bls-delta-method-rr/)で導出した $\text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$ は、同じ記号で書けば $\frac{1}{a} - \frac{1}{a+b} + \frac{1}{c} - \frac{1}{c+d}$ です。$\log(\widehat{OR})$ の分散の方が単純で、減算のない 4 つの逆数の和になっています。
+
+
+## OR の信頼区間の構成
+
+$\log(OR)$ の CI の作り方は、同じ記事の $RR$ に対する対数変換 CI と同じです。対数スケールで対称な区間を作り、指数変換して戻します。
+
+$$\log(\widehat{OR}) \pm z_{1-\alpha/2} \times \sqrt{\frac{1}{a} + \frac{1}{b} + \frac{1}{c} + \frac{1}{d}}$$
+
+指数変換すると
+
+$$\left( \widehat{OR} \cdot \exp(-z_{1-\alpha/2} \cdot SE), \quad \widehat{OR} \cdot \exp(+z_{1-\alpha/2} \cdot SE) \right)$$
+
+となります。ここで $SE = \sqrt{\frac{1}{a} + \frac{1}{b} + \frac{1}{c} + \frac{1}{d}}$ です。この区間は常に正で、$\widehat{OR}$ を中心に非対称、そして表の反転に対して同変です。
+
+
+## log(OR) と log(RR) を分ける 2 つの性質
+
+$\log(\widehat{RR})$ と $\log(\widehat{OR})$ はどちらも、デルタ法から導かれる閉じた形の分散式を持ちます。対数変換による CI、SQL での実装、逆分散重み付けも、どちらでも使えます。つまり閉じた形の分散は 2 つを分ける性質ではありません。分けるのは次の 2 点です。
+
+**logit 加法性の下でのベースライン非依存性。** 広告への曝露が対数オッズを定数 $\beta$ だけ動かすのであれば、$OR = \exp(\beta)$ は $p_0$ に依存しません。$RR$ と $p_1 - p_0$ は依存します。これが、調査をまたいだ統合に $\log(OR)$ を使う理由です。ベースラインの異なる調査の $\log(OR)$ を統合すれば、logit スケール上の共通の効果を推定していることになります。$\log(RR)$ を統合すると、広告の効果とベースラインが混ざります。
+
+**転置対称性。** 2×2 表の行（曝露群 $\leftrightarrow$ 対照群）または列（肯定 $\leftrightarrow$ 否定）を入れ替えると、$\log(OR)$ は $-\log(OR)$ に写ります。符号が反転し、大きさは変わりません。$\text{Var}(\log(\widehat{OR})) = \frac{1}{a} + \frac{1}{b} + \frac{1}{c} + \frac{1}{d}$ が 4 つのセルについて対称であることは、この性質の反映です。一方 $\text{Var}(\log(\widehat{RR})) = \frac{1}{a} - \frac{1}{a+b} + \frac{1}{c} - \frac{1}{c+d}$ は対称ではありません。肯定と否定を入れ替えると別の分散になります。$RR$ が転置対称性を持たないためです。
+
+
+## オッズ比がリスク比に近づく条件
+
+2 つの指標は次の恒等式で結ばれています。
+
+$$OR = RR \times \frac{1 - p_0}{1 - p_1}$$
+
+$p_0$ と $p_1$ がともに小さければ $\frac{1 - p_0}{1 - p_1} \approx 1$ で、$OR \approx RR$ になります。
+
+ところが、BLS のベースラインは小さくありません。典型的には 10% から 40% で、この水準では $OR$ と $RR$ は乖離します。
+
+| $p_0$ | $p_1$  | $RR$  | $OR$  |
+|-------|--------|-------|-------|
+| 0.02  | 0.024  | 1.200 | 1.205 |
+| 0.10  | 0.120  | 1.200 | 1.227 |
+| 0.30  | 0.360  | 1.200 | 1.313 |
+
+$p_0 = 0.30$、$RR = 1.20$ のときの $OR$ は $1.31$ で、これをリスク比と読み違えるとリフトを 55% 過大に伝えることになります。BLS の文脈で $OR$ をリフトとして解釈してはいけません。広告主への報告スケールは $RR - 1$（相対リフト）か $p_1 - p_0$（絶対リフト）のままで、$\log(OR)$ は統合という別の用途に使います。
+
+
+## 数値例: ベースラインの異なる 3 つの調査
+
+$\beta = \log(1.30) = 0.2624$ に固定し、$n_1 = n_0 = 500$ の合成データで調査を 3 つ作ります。セル度数は $n \times p$ を四捨五入した整数です。
+
+```{r}
+#| label: tbl-studies
+#| tbl-cap: "対数オッズの効果を $\\beta = \\log(1.30)$ で一定にした 3 つの合成データの調査。OR はほぼ一定で、RR はベースラインが高いほど小さくなる。"
+#| echo: false
+#| message: false
+
+studies <- tribble(
+  ~study, ~p0,  ~a,  ~b,   ~c,  ~d,
+  "A",    0.10,  63, 437,  50, 450,
+  "B",    0.30, 179, 321, 150, 350,
+  "C",    0.50, 283, 217, 250, 250
+) |>
+  mutate(
+    p1 = a / (a + b),
+    rr = p1 / p0,
+    or = (a * d) / (b * c)
+  )
+
+studies |>
+  select(study, p0, p1, a, b, c, d, rr, or) |>
+  gt::gt() |>
+  gt::fmt_number(columns = c(p0, p1), decimals = 3) |>
+  gt::fmt_number(columns = c(rr, or), decimals = 3) |>
+  gt::fmt_integer(columns = c(a, b, c, d)) |>
+  gt::cols_label(
+    study = "Study",
+    p0 = gt::md("$p_0$"),
+    p1 = gt::md("$p_1$"),
+    a = gt::md("$a$"),
+    b = gt::md("$b$"),
+    c = gt::md("$c$"),
+    d = gt::md("$d$"),
+    rr = gt::md("$RR$"),
+    or = gt::md("$OR$")
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+対数オッズの効果は、構成上 3 つの調査で同一です。それでも $RR$ は $1.132$（調査 C、$p_0 = 0.50$）から $1.260$（調査 A、$p_0 = 0.10$）まで散らばり、$RR$ で順位を付けると調査 A が最も効果的に見えます。$OR$ で順位を付ければ、3 つはほぼ同じ値です。
+
+調査ごとの $OR$ の CI も見ておきます。
+
+```{r}
+#| label: tbl-study-ci
+#| tbl-cap: "対数変換のデルタ法で求めた、調査ごとの OR の 95% CI。"
+#| echo: false
+#| message: false
+
+study_ci <- studies |>
+  mutate(
+    log_or = log(or),
+    se2 = 1/a + 1/b + 1/c + 1/d,
+    se = sqrt(se2),
+    ci_lower = exp(log_or - 1.96 * se),
+    ci_upper = exp(log_or + 1.96 * se)
+  )
+
+study_ci |>
+  select(study, log_or, se2, se, ci_lower, ci_upper) |>
+  gt::gt() |>
+  gt::fmt_number(columns = c(log_or, se2, se), decimals = 4) |>
+  gt::fmt_number(columns = c(ci_lower, ci_upper), decimals = 3) |>
+  gt::cols_label(
+    study = "Study",
+    log_or = gt::md("$\\log(\\widehat{OR})$"),
+    se2 = gt::md("$SE^2$"),
+    se = gt::md("$SE$"),
+    ci_lower = "CI lower",
+    ci_upper = "CI upper"
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+CI が最も広いのは調査 A（$SE = 0.201$）です。対照群の肯定回答数 $c = 50$ が小さく、$\frac{1}{c}$ の項が支配的になるためです。最も狭いのは 4 つのセルがどれも大きい調査 C（$SE = 0.127$）で、95% 水準で $1$ を含まない CI は、この調査 C だけです。
+
+
+## 統合: 表を合算しない理由
+
+3 つの 2×2 表は、セルごとに足し合わせて 1 つの表にまとめることもできます。各調査内の $OR$ が同じなら、合算した表の $OR$ もその共通の値になるはずです。ところが、そうはなりません。$OR = 4.0$、$n_1 = n_0 = 1{,}000$ の調査 2 つで確かめます。
+
+```{r}
+#| label: tbl-noncollapse
+#| tbl-cap: "OR の非崩壊性（non-collapsibility）。調査内の OR はどちらも 4.0 だが、合算した表の OR は 3.22 になる。"
+#| echo: false
+#| message: false
+
+nc <- tribble(
+  ~study, ~p0,  ~p1,
+  "A",    0.10,  4/13,
+  "B",    0.40,  8/11,
+) |>
+  mutate(
+    or = (p1 / (1 - p1)) / (p0 / (1 - p0)),
+  )
+
+nc_merged <- nc |>
+  summarise(
+    study = "Merged",
+    p0 = mean(p0),
+    p1 = mean(p1),
+  ) |>
+  mutate(
+    or = (p1 / (1 - p1)) / (p0 / (1 - p0)),
+  )
+
+bind_rows(nc, nc_merged) |>
+  gt::gt() |>
+  gt::fmt_number(columns = c(p0, p1, or), decimals = 3) |>
+  gt::cols_label(
+    study = "Study",
+    p0 = gt::md("$p_0$"),
+    p1 = gt::md("$p_1$"),
+    or = gt::md("$OR$")
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+どちらの調査も $OR = 4.0$ ですが、合算した表では $OR = 3.22$ になります。調査内の効果が同じでも、表を足し合わせると $OR$ は歪むということです（$RR$ にこの問題はなく、合算しても共通の $RR$ は保たれます）。対処は単純で、調査ごとに $\log(\widehat{OR})$ を計算してから、その推定値を統合します。
+
+
+## 調査単位の log(OR) の統合
+
+$K$ 件の調査にわたる $\log(\widehat{OR})$ の逆分散重み付き平均は
+
+$$\log(\widehat{OR})_{\text{pooled}} = \frac{\sum_{k=1}^{K} w_k \log(\widehat{OR}_k)}{\sum_{k=1}^{K} w_k}$$
+
+で、重みは $w_k = \frac{1}{\text{Var}(\log(\widehat{OR}_k))} = \frac{1}{\frac{1}{a_k} + \frac{1}{b_k} + \frac{1}{c_k} + \frac{1}{d_k}}$ です。
+
+統合した推定値の分散は $\text{Var}(\log(\widehat{OR})_{\text{pooled}}) = \frac{1}{\sum_{k} w_k}$ なので、95% CI は
+
+$$\log(\widehat{OR})_{\text{pooled}} \pm 1.96 \times \frac{1}{\sqrt{\sum_k w_k}}$$
+
+になります。
+
+
+### 数値例: 3 つの調査の統合
+
+```{r}
+#| label: tbl-pooling
+#| tbl-cap: "3 つの調査の逆分散重み付き統合。"
+#| echo: false
+#| message: false
+
+pooling <- study_ci |>
+  mutate(
+    w = 1 / se2,
+    w_log_or = w * log_or
+  )
+
+w_total <- sum(pooling$w)
+pooled_log_or <- sum(pooling$w_log_or) / w_total
+pooled_se <- 1 / sqrt(w_total)
+pooled_ci_lower <- exp(pooled_log_or - 1.96 * pooled_se)
+pooled_ci_upper <- exp(pooled_log_or + 1.96 * pooled_se)
+
+pooling |>
+  select(study, log_or, se2, w, w_log_or) |>
+  gt::gt() |>
+  gt::fmt_number(columns = c(log_or, se2, w, w_log_or), decimals = 4) |>
+  gt::cols_label(
+    study = "Study",
+    log_or = gt::md("$\\log(\\widehat{OR})$"),
+    se2 = gt::md("$SE^2$"),
+    w = gt::md("$w$"),
+    w_log_or = gt::md("$w \\times \\log(\\widehat{OR})$")
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+重みの合計と統合した点推定は
+
+$$\sum w_k = 141.58, \quad \log(\widehat{OR})_{\text{pooled}} = \frac{37.3433}{141.58} = 0.2638$$
+
+$$SE_{\text{pooled}} = \frac{1}{\sqrt{141.58}} = 0.0840$$
+
+なので、$\log(OR)$ の 95% CI は
+
+$$0.2638 \pm 1.96 \times 0.0840 = (0.0990, \; 0.4285)$$
+
+となり、$OR$ のスケールに戻すと
+
+$$(e^{0.0990}, \; e^{0.4285}) = (1.104, \; 1.535)$$
+
+です。
+
+3 つの調査を個別に見ると、95% 水準で $1$ を明確に含まない CI を出したものはありません（調査 C がかろうじて含まないだけです）。統合した CI は $1$ を含まず、下限は $1.1$ を上回ります。個別の調査だけでは確立できなかったシグナルが、統合によって見えたことになります。
+
+重みが最も大きいのは調査 C（$w_C$）です。4 つのセルがどれも大きく、分散が最小になるためです。最も小さいのは調査 A で、対照群の肯定回答数 $c = 50$ が $\frac{1}{c}$ の項を膨らませます。どの調査を採用するかという手作業の判断を挟まずに、精度の低い推定値が自動的に軽く扱われるわけです。
+
+```{r}
+#| label: fig-pooled-ci
+#| fig-cap: "調査ごとと統合後の OR の 95% CI。"
+#| echo: false
+#| message: false
+
+ci_data <- study_ci |>
+  select(label = study, or, ci_lower, ci_upper) |>
+  bind_rows(
+    tibble(
+      label = "Pooled",
+      or = exp(pooled_log_or),
+      ci_lower = pooled_ci_lower,
+      ci_upper = pooled_ci_upper
+    )
+  ) |>
+  mutate(label = fct_inorder(label) |> fct_rev())
+
+ggplot(ci_data, aes(x = or, y = label, xmin = ci_lower, xmax = ci_upper, colour = label)) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +
+  geom_pointrange() +
+  scale_x_continuous(breaks = scales::breaks_width(0.25)) +
+  labs(x = "Odds Ratio", y = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "none")
+```
