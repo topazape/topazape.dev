@@ -2,7 +2,7 @@
 title: "The Synthetic Control Method (SCM): From Choosing a Control to Estimating Weights"
 draft: true
 draft-mode: unlinked
-date: "2026-10-21"
+date: "2026-10-28"
 categories: ["causal-inference", "statistics"]
 ---
 
@@ -49,7 +49,8 @@ Write $Y_{jt}$ for the completion rate of donor $j$ on day $t$ ($j = 1, \dots, J
 The synthetic control is built as a convex combination of the donors, that is, a weighted average with weights $w_j$ that are non-negative and sum to one.
 
 $$
-  \hat{Y}^{\text{synth}}_{t} = \sum_{j=1}^{J} w_j\, Y_{jt}, \qquad w_j \geq 0, \quad \sum_{j=1}^{J} w_j = 1
+  \hat{Y}^{\text{synth}}_{t} = \sum_{j=1}^{J} w_j\, Y_{jt}, \qquad w_j
+                             \geq 0, \quad \sum_{j=1}^{J} w_j = 1
 $$
 
 The weights $w_j$ are chosen by how well they reproduce the pre-period iOS series.
@@ -57,7 +58,7 @@ Write $T$ for the release date and $T_{\text{pre}}$ for the number of pre-period
 The criterion is the pre-period mean squared prediction error (MSPE from here on),
 
 $$
-  \frac{1}{T_{\text{pre}}} \sum_{t < T} \left( Y_{\text{iOS},t} - \sum_{j} w_j\, Y_{jt} \right)^2
+  \frac{1}{T_{\text{pre}}} \sum_{t<T} \left( Y_{\text{iOS},t} - \sum_{j} w_j\, Y_{jt} \right)^2
 $$
 
 minimized under the convex-combination constraint.
@@ -84,12 +85,12 @@ In other words, the Android series that [the DiD article](/posts/causal-did-para
 The estimators, however, are not the same.
 The table below lays out the differences.
 
-  |                                      | DiD                                                     | SCM                                                               |
-  | ------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------- |
-  | Control series                       | Android alone, chosen by the analyst                    | A convex combination of 10 donors, weights decided by the data    |
-  | Handling of level differences        | Cancels the moment the before/after difference is taken | Not subtracted away; the level itself is reproduced               |
-  | Pre-period information               | A single point, the pre-period mean                     | The entire daily series                                           |
-  | Assumption behind the counterfactual | Parallel trends                                         | The factor structure that reproduced the pre-period persists post |
+  |                                      | DiD                                                 | SCM                                                               |
+  | ------------------------------------ | --------------------------------------------------- | ----------------------------------------------------------------- |
+  | Control series                       | Android alone, chosen by the analyst                | A convex combination of 10 donors, weights decided by the data    |
+  | Handling of level differences        | Cancels the moment the pre-post difference is taken | Not subtracted away; the level itself is reproduced               |
+  | Pre-period information               | A single point, the pre-period mean                 | The entire daily series                                           |
+  | Assumption behind the counterfactual | Parallel trends                                     | The factor structure that reproduced the pre-period persists post |
 
 The essential difference is the handling of level differences.
 The SCM formulation has no intercept term, so a level difference stays in the gap as is.
