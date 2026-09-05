@@ -4,6 +4,37 @@ version = 2
 r_version = "4.6"
 
 [[packages]]
+name = "Boom"
+version = "0.9.16"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = true
+dependencies = [
+    "MASS",
+]
+
+[[packages]]
+name = "BoomSpikeSlab"
+version = "1.2.7"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = true
+dependencies = [
+    { name = "Boom", requirement = "(>= 0.9.16)" },
+]
+
+[[packages]]
+name = "CausalImpact"
+version = "1.4.1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "bsts", requirement = "(>= 0.9.0)" },
+    { name = "assertthat", requirement = "(>= 0.2.0)" },
+    "Boom",
+    "ggplot2",
+    "zoo",
+]
+
+[[packages]]
 name = "DBI"
 version = "1.3.0"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -12,7 +43,7 @@ dependencies = []
 
 [[packages]]
 name = "Deriv"
-version = "4.3.0"
+version = "4.3.5"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = [
@@ -138,7 +169,7 @@ dependencies = []
 [[packages]]
 name = "TMB"
 version = "1.9.25"
-source = { repository = "https://packagemanager.posit.co/cran/latest" }
+source = { repository = "https://cloud.r-project.org/" }
 force_source = false
 dependencies = [
     { name = "Matrix", requirement = "(>= 1.0-12)" },
@@ -164,6 +195,13 @@ force_source = false
 dependencies = [
     { name = "sys", requirement = "(>= 2.1)" },
 ]
+
+[[packages]]
+name = "assertthat"
+version = "0.2.1"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = []
 
 [[packages]]
 name = "backports"
@@ -289,6 +327,18 @@ dependencies = [
     "mime",
     "rlang",
     { name = "sass", requirement = "(>= 0.4.9)" },
+]
+
+[[packages]]
+name = "bsts"
+version = "0.9.11"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = true
+dependencies = [
+    { name = "BoomSpikeSlab", requirement = "(>= 1.2.7)" },
+    { name = "zoo", requirement = "(>= 1.8)" },
+    "xts",
+    { name = "Boom", requirement = "(>= 0.9.16)" },
 ]
 
 [[packages]]
@@ -503,7 +553,7 @@ dependencies = []
 [[packages]]
 name = "distributions3"
 version = "0.3.0"
-source = { repository = "https://packagemanager.posit.co/cran/latest" }
+source = { repository = "https://cloud.r-project.org/" }
 force_source = false
 dependencies = [
     "rlang",
@@ -813,7 +863,7 @@ dependencies = [
 
 [[packages]]
 name = "gtsummary"
-version = "2.6.0"
+version = "2.6.1"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = [
@@ -1955,6 +2005,15 @@ version = "1.0.5"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
 force_source = false
 dependencies = []
+
+[[packages]]
+name = "xts"
+version = "0.14.2"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "zoo", requirement = "(>= 1.7-12)" },
+]
 
 [[packages]]
 name = "yaml"
