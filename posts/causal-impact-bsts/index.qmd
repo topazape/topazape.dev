@@ -343,10 +343,10 @@ estimates <- bind_rows(
 )
 
 notes <- tribble(
-  ~method, ~interval, ~assumption,
-  "DiD (61-day window)", "Asymptotic normal 95% CI based on binomial variance", "Parallel trends",
-  "SCM", "None (in-space placebo rank, p = 1/11)", "The pre-intervention factor structure continues afterward",
-  "CausalImpact", "95% posterior interval based on posterior prediction of the counterfactual", "The state structure and relationship with controls remain stable across the intervention"
+  ~method               , ~interval                                                                    , ~assumption                                                                                ,
+  "DiD (61-day window)" , "Asymptotic normal 95% CI based on binomial variance"                        , "Parallel trends"                                                                          ,
+  "SCM"                 , "None (in-space placebo rank, p = 1/11)"                                     , "The pre-intervention factor structure continues afterward"                                ,
+  "CausalImpact"        , "95% posterior interval based on posterior prediction of the counterfactual" , "The state structure and relationship with controls remain stable across the intervention"
 )
 
 comparison <- estimates |> left_join(notes, by = "method")
