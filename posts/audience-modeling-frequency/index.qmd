@@ -1,5 +1,6 @@
 ---
-title: "Modeling Ad Frequency Distributions with Finite Mixtures of Negative Binomials"
+title: >-
+  Modeling Ad Frequency Distributions with Finite Mixtures of Negative Binomials
 draft: true
 draft-mode: unlinked
 date: "2026-09-09"
