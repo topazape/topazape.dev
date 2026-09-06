@@ -30,8 +30,4 @@ dependencies = [
   "tidysynth",
   { name = "TMB", repository = "CRAN" },
   "glmmTMB",
-  "copula",
-  { name = "Boom", force_source = true },
-  { name = "BoomSpikeSlab", force_source = true },
-  { name = "bsts", force_source = true },
 ]
