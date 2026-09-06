@@ -1,0 +1,489 @@
+---
+title: "Bayesian Structural Time Series (BSTS): From Point Estimates to Posterior Predictive Intervals"
+draft: true
+draft-mode: unlinked
+date: "2026-11-18"
+categories: ["causal-inference", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+att_true <- 0.01049 # True ATT derived from the data-generating process (+1.049 pp)
+
+panel <- read_csv(
+  "../../data/causal-synthetic-data-design/panel_parallel.csv",
+  show_col_types = FALSE
+)
+```
+
+This article models the temporal structure of the iOS completion rate with a state-space model and estimates the causal effect by predicting how the rate would have evolved without the intervention.
+The method is Bayesian structural time series (BSTS), implemented with {CausalImpact} from [Brodersen et al. (2015)](https://doi.org/10.1214/14-AOAS788).
+
+The data are daily ad completion rates for 11 devices over 243 days, generated in the [article on synthetic data design](/posts/causal-synthetic-data-design/).
+An ad-pause feature was released only on iOS on 2026-06-01.
+The true average treatment effect on the treated (ATT) is +1.049 percentage points (pp).
+To evaluate the method, I use the full 182-day pre-intervention period and 61-day post-intervention period.
+
+This article covers the following:
+
+1. Define the BSTS state-space model and the selection of control series through a spike-and-slab prior.
+2. Estimate pointwise effects and the post-intervention average with {CausalImpact}.
+3. Compare the results and assumptions of difference-in-differences (DiD), the [synthetic control method (SCM)](/posts/causal-scm-placebo-inference/), and CausalImpact.
+
+## State-space model
+
+BSTS combines the treated unit's own temporal structure with a regression on control series.
+A local level and a day-of-week component represent the temporal structure of iOS, while the regression component represents variation shared with the controls.
+
+Let $y_t$ denote the daily iOS completion rate and $\mathbf{x}_t$ the vector of completion rates for the 10 controls.
+The index $t = 1, \dots, 243$ corresponds to dates from 2025-12-01 through 2026-07-31, and the release date $T$ = 2026-06-01 corresponds to $t = 183$.
+The observation equation is
+
+$$
+  y_t = \mu_t + \gamma_t + \boldsymbol{\beta}^\top \mathbf{x}_t
+        + \varepsilon_t, \qquad \varepsilon_t \sim N(0, \sigma_\varepsilon^2)
+$$
+
+  | Component                                                   | State transition                                                                                    | Variation represented                                                  |
+  | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+  | Local level $\mu_t$                                         | $\mu_{t+1} = \mu_t + \eta_t, \quad \eta_t \sim N(0, \sigma_\eta^2)$                                 | Local variation in the iOS level                                       |
+  | Day-of-week component $\gamma_t$                            | $\gamma_{t+1} = -\sum_{s=0}^{5} \gamma_{t-s} + \omega_t, \quad \omega_t \sim N(0, \sigma_\omega^2)$ | The iOS weekly cycle (expected to sum to 0 over seven days)            |
+  | Regression component $\boldsymbol{\beta}^\top \mathbf{x}_t$ | None ($\boldsymbol{\beta}$ is time-invariant)                                                       | Variation shared with the controls, including unobserved common causes |
+
+The control series must not be affected by the intervention.
+Because the intervention changes the UI within the iOS app, spillovers to other devices are unlikely.
+
+I place a spike-and-slab prior on the regression coefficients $\boldsymbol{\beta}$.
+This mixture of a point mass at 0 (the spike) and a diffuse continuous distribution (the slab) represents uncertainty about whether each control series enters the regression.
+SCM also determines control weights from the data, but the roles and constraints differ.
+
+  | Aspect                       | Convex combination in SCM                                                     | Regression component in BSTS                                  |
+  | ---------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------- |
+  | Source of the counterfactual | Donor series only                                                             | The treated unit's state components + control series          |
+  | Coefficient constraints      | $w_j \geq 0$, $\sum_j w_j = 1$                                                | None (sign and sum are unrestricted)                          |
+  | Level differences            | No intercept; reproduces the level within the convex hull                     | Absorbed by the local level $\mu_t$                           |
+  | Treatment of control series  | Point-estimated weights from constrained optimization (some weights may be 0) | Probabilistic selection through a spike-and-slab prior        |
+  | Selection uncertainty        | Not represented (one point estimate of the weights)                           | Represented by the posterior distribution of the coefficients |
+
+BSTS has no convex-combination constraint, and $\mu_t$ absorbs level differences, so the treated unit need not lie within the donors' convex hull.
+The tradeoff is that extrapolation is allowed: predictions outside the range observed in the pre-intervention period depend strongly on the model structure and prior.
+
+## Posterior prediction of the counterfactual
+
+The posterior distribution of the model is estimated from $(y_t, \mathbf{x}_t)$ over the 182-day pre-intervention period.
+For the 61-day post-intervention period, the predictive distribution of $y_t^{(0)}$ is computed using only the observed control series $\mathbf{x}_t$.
+This distribution is the counterfactual completion rate without the intervention.
+{CausalImpact} fits the model over the full period while treating post-intervention $y_t$ as missing, then extracts its posterior predictive distribution.
+This prediction assumes that the regression coefficients $\boldsymbol{\beta}$ and the structure of the state components remain stable after the intervention.
+Like parallel trends in DiD or the assumption in SCM that the pre-intervention factor structure continues afterward, this assumption cannot be verified from pre-intervention fit alone.
+
+Define the pointwise effect as $\tau_t = y_t - y_t^{(0)}$ and the post-intervention average as
+
+$$
+  \bar{\tau} = \frac{1}{61}\sum_{t=183}^{243}\tau_t
+$$
+
+For each posterior predictive draw of the counterfactual $y_t^{(0)}$, I calculate its difference from the observation and the average of those differences over the period.
+This yields the posterior distributions of $\tau_t$ and $\bar{\tau}$.
+I report the interval from the 2.5th to the 97.5th percentile as the 95% posterior interval.
+
+In principle, the interval for the pointwise effect widens with distance from the release date because $\sigma_\eta^2$ is added to the predictive variance of the local level each day.
+If $\sigma_\eta$ is sufficiently small relative to the observation noise $\sigma_\varepsilon$, however, little widening may be visible over 61 days.
+
+{CausalImpact} reports pointwise effects, the post-intervention average, and a cumulative effect (`cumulative`).
+I report only $\tau_t$ and $\bar{\tau}$.
+A sum of completion rates with denominators that vary by day has no meaningful interpretation, so I do not use the cumulative effect.
+
+## Estimation with {CausalImpact}
+
+The default {CausalImpact} model contains a local level and a regression component but no seasonal component (`nseasons = 1`).
+Because these data have a day-of-week cycle, I set `nseasons = 7`.
+
+The model standardizes each series using its pre-intervention mean and standard deviation, fits the model, and transforms the results back to the original scale.
+I retain the default priors.
+For the standard deviation $\sigma_\eta$ of the local-level disturbance $\eta_t$, the defaults specify a guess of 0.01 on the standardized scale (`prior.level.sd`) and 32 prior observations, implying a slowly varying level.
+The spike-and-slab prior has an expected model size of 3, giving each of the 10 control series a prior inclusion probability of 0.3.
+I do not examine the other settings ([{CausalImpact} source](https://github.com/google/CausalImpact/blob/master/R/impact_model.R)).
+
+The first column of the input data is the date, the second is iOS, and the remaining columns are the 10 controls.
+The pre- and post-intervention periods are specified by date.
+{CausalImpact} internally fixes the {bsts} random seed at 1.
+I draw 5,000 Markov chain Monte Carlo (MCMC) samples.
+
+```{r}
+#| label: did-61
+#| include: false
+
+# Compute the same 2x2 DiD estimator (iOS vs Android) over 61 post-intervention days
+did_61 <- panel |>
+  filter(device %in% c("ios", "android")) |>
+  mutate(period = if_else(post, "post", "pre")) |>
+  summarise(
+    complete = sum(complete),
+    impression = sum(impression),
+    .by = c(device, period)
+  ) |>
+  mutate(
+    rate = complete / impression,
+    var_rate = rate * (1 - rate) / impression
+  ) |>
+  pivot_wider(
+    names_from = period,
+    values_from = c(rate, var_rate),
+    id_cols = device
+  ) |>
+  mutate(
+    diff = rate_post - rate_pre,
+    var_diff = var_rate_post + var_rate_pre,
+    .keep = "unused"
+  ) |>
+  pivot_wider(names_from = device, values_from = c(diff, var_diff)) |>
+  mutate(
+    estimate = diff_ios - diff_android,
+    se = sqrt(var_diff_ios + var_diff_android),
+    ci_lower = estimate - qnorm(0.975) * se,
+    ci_upper = estimate + qnorm(0.975) * se,
+    .keep = "none"
+  )
+```
+
+```{r}
+#| label: impact-fit
+#| include: false
+#| cache: true
+
+rates <- panel |>
+  mutate(device = str_replace_all(device, "-", "_")) |>
+  pivot_wider(
+    id_cols = date,
+    names_from = device,
+    values_from = complete_rate
+  ) |>
+  arrange(date) |>
+  relocate(date, ios) # First column: date; second column: y (iOS)
+
+pre_period <- c(min(rates$date), date_treat - 1)
+post_period <- c(date_treat, max(rates$date))
+
+# Local level + day-of-week (nseasons = 7) + regression
+impact <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(nseasons = 7, niter = 5000)
+)
+
+# Reference model without seasonality (used only to compare inclusion probabilities)
+impact_noseason <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(niter = 5000)
+)
+
+avg <- impact$summary |>
+  as_tibble(rownames = "period") |>
+  pivot_longer(-period, names_to = "metric") |>
+  filter(period == "Average")
+```
+
+```{r}
+#| label: tbl-impact
+#| tbl-cap: >-
+#|   Post-intervention averages.
+#|   Observed, counterfactual, and effect values are shown in pp.
+#| echo: false
+#| message: false
+
+avg |>
+  pivot_wider(names_from = metric) |>
+  select(
+    Actual,
+    Pred,
+    Pred.lower,
+    Pred.upper,
+    AbsEffect,
+    AbsEffect.lower,
+    AbsEffect.upper
+  ) |>
+  gt::gt() |>
+  gt::fmt_number(decimals = 3, scale_by = 100) |>
+  gt::cols_label(
+    Actual = "Observed",
+    Pred = "Posterior mean",
+    Pred.lower = "Lower",
+    Pred.upper = "Upper",
+    AbsEffect = "Posterior mean",
+    AbsEffect.lower = "Lower",
+    AbsEffect.upper = "Upper"
+  ) |>
+  gt::tab_spanner(
+    label = "Counterfactual",
+    columns = c(Pred, Pred.lower, Pred.upper)
+  ) |>
+  gt::tab_spanner(
+    label = gt::md("Effect $\\bar{\\tau}$"),
+    columns = c(AbsEffect, AbsEffect.lower, AbsEffect.upper)
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+@tbl-impact shows the post-intervention averages.
+The difference between the posterior mean of $\bar{\tau}$ and the true value of +1.049 pp is `r scales::number(100 * (avg$AbsEffect - att_true), accuracy = 0.001, style_positive = "plus")` pp, and the 95% posterior interval contains the true value.
+
+```{r}
+#| label: fig-impact
+#| fig-cap: >-
+#|   Top: observed iOS completion rate (solid), posterior prediction of the counterfactual (dashed), and 95% posterior predictive interval (band).
+#|   Bottom: pointwise effect $\tau_t$ and 95% posterior interval.
+#|   The vertical dashed line marks the release date.
+#| echo: false
+#| message: false
+#| warning: false
+
+plot(impact, c("original", "pointwise")) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(strip.background = element_blank())
+```
+
+In the top panel of @fig-impact, the observed series exceeds the counterfactual after release.
+The interval width in the bottom panel is nearly constant over the 61 days because $\sigma_\eta$ for the local level is small relative to the observation noise, so the increase in variance over the prediction horizon is not conspicuous.
+The pointwise intervals include daily binomial noise (with a standard deviation of about 0.4 pp) and are therefore wider than the interval for the average effect.
+The figure is used to assess whether the effect persists over the period, not to judge individual days.
+
+```{r}
+#| label: tbl-inclusion
+#| tbl-cap: >-
+#|   Posterior inclusion probabilities for the regression coefficients (share of post-burn-in draws in which the coefficient is nonzero; first 10% discarded).
+#|   The prior inclusion probability is 0.3 in both models.
+#| echo: false
+#| message: false
+
+burn <- tibble(
+  model = c("seasonal", "noseason"),
+  burn = c(
+    bsts::SuggestBurn(0.1, impact$model$bsts.model),
+    bsts::SuggestBurn(0.1, impact_noseason$model$bsts.model)
+  )
+)
+
+draws <- bind_rows(
+  seasonal = as_tibble(impact$model$bsts.model$coefficients),
+  noseason = as_tibble(impact_noseason$model$bsts.model$coefficients),
+  .id = "model"
+) |>
+  mutate(draw = row_number(), .by = model) |>
+  left_join(burn, by = "model") |>
+  filter(draw > burn) |>
+  select(-burn)
+
+inclusion <- draws |>
+  pivot_longer(-c(model, draw), names_to = "series", values_to = "beta") |>
+  filter(series != "(Intercept)") |>
+  summarise(inclusion = mean(beta != 0), .by = c(model, series)) |>
+  mutate(series = str_replace_all(series, "_", "-"))
+
+inclusion |>
+  pivot_wider(names_from = model, values_from = inclusion) |>
+  arrange(desc(noseason)) |>
+  gt::gt() |>
+  gt::fmt_percent(columns = -series, decimals = 1) |>
+  gt::cols_label(
+    series = "Control series",
+    seasonal = "With day-of-week",
+    noseason = "Without day-of-week (default)"
+  ) |>
+  gt::cols_align(align = "right", columns = -series) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+@tbl-inclusion shows the posterior inclusion probabilities of the regression coefficients.
+In the model with a day-of-week component, all series range from `r scales::percent(min(inclusion$seasonal), accuracy = 0.1)` to `r scales::percent(max(inclusion$seasonal), accuracy = 0.1)`, well below the prior inclusion probability of 0.3.
+
+This agrees with the data-generating process.
+Only the day-of-week cycle and trend are common across devices; daily binomial noise is independent.
+Once the day-of-week component and local level capture the former, little shared variation remains for the control series to explain.
+Without the day-of-week component, the inclusion probability for Android reaches `r scales::percent(inclusion$noseason[inclusion$series == "android"], accuracy = 0.1)`, and the regression component captures the day-of-week cycle instead.
+
+SCM must use controls to form a convex combination, whereas BSTS selects controls only when they provide shared variation not explained by the state components.
+Low inclusion probabilities in real data indicate that the counterfactual relies mainly on extrapolating the treated unit's own temporal structure.
+
+## Comparison of three methods
+
+I compare the three methods over 61 post-intervention days.
+The [DiD article](/posts/causal-did-parallel-trends/) used a seven-day window to match the operational decision, but here I recompute the same estimator over 61 days.
+The SCM value comes from the [article on that method](/posts/causal-scm-placebo-inference/).
+
+```{r}
+#| label: tbl-comparison
+#| tbl-cap: >-
+#|   Post-intervention average estimates (pp) from three methods on the same data (seed = 1).
+#|   The true ATT is +1.049 pp.
+#| echo: false
+#| message: false
+
+estimates <- bind_rows(
+  "DiD (61-day window)" = did_61 |>
+    select(estimate, lower = ci_lower, upper = ci_upper),
+  "SCM" = tibble(estimate = 0.0108),
+  "CausalImpact" = avg |>
+    pivot_wider(names_from = metric, values_from = value) |>
+    select(
+      estimate = AbsEffect,
+      lower = AbsEffect.lower,
+      upper = AbsEffect.upper
+    ),
+  .id = "method"
+)
+
+notes <- tribble(
+  ~method, ~interval, ~assumption,
+  "DiD (61-day window)", "Asymptotic normal 95% CI based on binomial variance", "Parallel trends",
+  "SCM", "None (in-space placebo rank, p = 1/11)", "The pre-intervention factor structure continues afterward",
+  "CausalImpact", "95% posterior interval based on posterior prediction of the counterfactual", "The state structure and relationship with controls remain stable across the intervention"
+)
+
+comparison <- estimates |> left_join(notes, by = "method")
+
+comparison |>
+  gt::gt() |>
+  gt::fmt_number(
+    columns = c(estimate, lower, upper),
+    rows = method != "SCM",
+    decimals = 3,
+    scale_by = 100
+  ) |>
+  gt::fmt_number(
+    columns = estimate,
+    rows = method == "SCM",
+    decimals = 2,
+    scale_by = 100
+  ) |>
+  gt::sub_missing(columns = c(lower, upper), missing_text = "—") |>
+  gt::cols_label(
+    method = "Method",
+    estimate = "Estimate",
+    lower = "Lower",
+    upper = "Upper",
+    interval = "Inference",
+    assumption = "Assumption supporting the counterfactual"
+  ) |>
+  gt::cols_align(align = "right", columns = c(estimate, lower, upper)) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+All three point estimates are close to the true value because the data-generating process was designed to satisfy each method's assumptions.
+In real data, parallel trends, persistence of the factor structure, and stability of the relationship with controls cannot be verified for the post-intervention period.
+Pre-intervention trends and model fit are informative, but they do not prove these assumptions.
+
+The CausalImpact counterfactual is composed almost entirely of the local level and day-of-week component.
+Thus, this estimate is supported less by the relationship with controls than by the assumption that the temporal structure of iOS continues after the intervention.
+
+The meaning of the inference also differs.
+DiD uses an asymptotic normal CI based on binomial variance, SCM uses a rank with resolution $1/11$, and CausalImpact uses a posterior interval conditional on the model and prior.
+All three nevertheless construct the counterfactual from assumptions that cannot be verified.
+
+## R code
+
+```r
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+att_true <- 0.01049
+
+panel <- read_csv("../../data/causal-impact-bsts/panel_parallel.csv")
+
+# Replace hyphens in device names because they are awkward in formulas
+# First column: date; second: treated unit (iOS); remaining columns: 10 controls
+rates <- panel |>
+  mutate(device = str_replace_all(device, "-", "_")) |>
+  pivot_wider(
+    id_cols = date,
+    names_from = device,
+    values_from = complete_rate
+  ) |>
+  arrange(date) |>
+  relocate(date, ios) # First column: date; second column: y (iOS)
+
+pre_period <- c(min(rates$date), date_treat - 1)
+post_period <- c(date_treat, max(rates$date))
+
+# --- Local level + day-of-week + regression (CausalImpact internally fixes seed at 1) ---
+
+impact <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(nseasons = 7, niter = 5000)
+)
+
+# Post-intervention average effect and 95% posterior interval (excluding cumulative row)
+impact$summary["Average", c("AbsEffect", "AbsEffect.lower", "AbsEffect.upper")]
+
+# Top: observed and counterfactual; bottom: pointwise effect (excluding cumulative panel)
+plot(impact, c("original", "pointwise"))
+
+# Posterior inclusion probabilities of regression coefficients (discarding first 10%)
+burn <- bsts::SuggestBurn(0.1, impact$model$bsts.model)
+colMeans(
+  impact$model$bsts.model$coefficients[-seq_len(burn), , drop = FALSE] != 0
+)
+
+# --- Reference: default model without day-of-week component ---
+
+impact_noseason <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(niter = 5000)
+)
+
+burn <- bsts::SuggestBurn(0.1, impact_noseason$model$bsts.model)
+colMeans(
+  impact_noseason$model$bsts.model$coefficients[
+    -seq_len(burn),
+    ,
+    drop = FALSE
+  ] !=
+    0
+)
+
+# --- Comparison: DiD (iOS vs Android) over a 61-day post-intervention window ---
+
+panel |>
+  filter(device %in% c("ios", "android")) |>
+  mutate(period = if_else(post, "post", "pre")) |>
+  summarise(
+    complete = sum(complete),
+    impression = sum(impression),
+    .by = c(device, period)
+  ) |>
+  mutate(
+    rate = complete / impression,
+    var_rate = rate * (1 - rate) / impression
+  ) |>
+  pivot_wider(
+    names_from = period,
+    values_from = c(rate, var_rate),
+    id_cols = device
+  ) |>
+  mutate(
+    diff = rate_post - rate_pre,
+    var_diff = var_rate_post + var_rate_pre,
+    .keep = "unused"
+  ) |>
+  pivot_wider(names_from = device, values_from = c(diff, var_diff)) |>
+  mutate(
+    estimate = diff_ios - diff_android,
+    se = sqrt(var_diff_ios + var_diff_android),
+    ci_lower = estimate - qnorm(0.975) * se,
+    ci_upper = estimate + qnorm(0.975) * se,
+    .keep = "none"
+  )
+```
