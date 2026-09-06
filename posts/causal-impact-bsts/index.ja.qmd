@@ -2,7 +2,7 @@
 title: "ベイズ構造時系列(BSTS): 点推定から事後予測区間へ"
 draft: true
 draft-mode: unlinked
-date: "2026-11-18"
+date: "2026-11-25"
 categories: ["causal-inference", "statistics"]
 ---
 

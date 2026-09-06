@@ -1,8 +1,9 @@
 ---
-title: "Bayesian Structural Time Series (BSTS): From Point Estimates to Posterior Predictive Intervals"
+title: >-
+  Bayesian Structural Time Series (BSTS): From Point Estimates to Posterior Predictive Intervals
 draft: true
 draft-mode: unlinked
-date: "2026-11-18"
+date: "2026-11-25"
 categories: ["causal-inference", "statistics"]
 ---
 
