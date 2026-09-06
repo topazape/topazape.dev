@@ -2,7 +2,7 @@
 title: "差分の差分法(DiD)による効果検証"
 draft: true
 draft-mode: unlinked
-date: "2026-10-14"
+date: "2026-10-28"
 categories: ["causal-inference", "statistics"]
 ---
 
