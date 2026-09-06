@@ -2,7 +2,7 @@
 title: "大規模な周辺分布と小規模パネルから媒体横断の利用構造を推定する"
 draft: true
 draft-mode: unlinked
-date: "2026-09-30"
+date: "2026-10-07"
 categories: ["audience-modeling", "data-fusion", "statistics"]
 ---
 
@@ -273,7 +273,6 @@ simulation_summary <- simulation_long |>
     rmse_pp = 100 * sqrt(mean((estimate - truth)^2)),
     .by = c(scenario, selection, heavy, metric, method)
   )
-
 ```
 
 ### 大規模な周辺データと小規模パネル
