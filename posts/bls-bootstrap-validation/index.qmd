@@ -1,5 +1,9 @@
 ---
 title: "How Reliable Is the Delta Method CI? Bootstrap Validation and Sample Size Planning"
+description: >-
+  Validate delta-method confidence intervals for Brand Lift risk ratios by
+  simulation and bootstrap, then derive sample sizes for a target power.
+image: index_files/figure-html/fig-coverage-1.png
 date: "2026-07-15"
 categories: ["brand-lift", "statistics"]
 ---

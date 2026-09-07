@@ -1,5 +1,9 @@
 ---
 title: "Fieller's Confidence Interval for Risk Ratios: Removing the Taylor Approximation"
+description: >-
+  Derive Fieller's confidence interval for Brand Lift risk ratios, compare its
+  coverage with delta and bootstrap methods, and implement it in R and BigQuery.
+image: index_files/figure-html/fig-ci-comparison-1.png
 date: "2026-07-29"
 categories: ["brand-lift", "statistics"]
 ---

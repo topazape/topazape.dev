@@ -4,5 +4,9 @@
 # (see https://quarto.org/docs/projects/code-execution.html#freeze)
 freeze: auto
 
+author:
+  - name: Tomonori Kawai
+    url: https://topazape.dev/about.html
+
 # Enable banner style title blocks
 title-block-banner: true
