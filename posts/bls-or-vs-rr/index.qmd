@@ -1,5 +1,9 @@
 ---
 title: "From Risk Ratios to Odds Ratios: Choosing an Aggregation Scale for Brand Lift"
+description: >-
+  Compare risk ratios and odds ratios across Brand Lift studies, derive the
+  log-odds confidence interval, and pool campaign effects by inverse variance.
+image: index_files/figure-html/fig-pooled-ci-1.png
 date: "2026-08-12"
 categories: ["brand-lift", "statistics", "meta-analysis"]
 ---

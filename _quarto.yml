@@ -5,10 +5,14 @@ project:
     - "!*.ja.qmd"
     - "!rv/"
 
+lang: en
+
 website:
   title: "topazape"
   site-url: https://topazape.dev
   description: "Statistical modeling and causal inference, with applications in advertising effectiveness measurement."
+  open-graph: true
+  twitter-card: true
   navbar:
     left:
       - about.qmd
@@ -24,6 +28,7 @@ website:
 
 format:
   html:
+    canonical-url: true
     theme:
       - flatly
       - custom.scss

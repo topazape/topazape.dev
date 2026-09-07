@@ -44,6 +44,17 @@ jobs:
       - name: Render
         run: quarto render
 
+      - name: Verify homepage output
+        run: |
+          grep -q 'class="quarto-listing' _site/index.html
+          ! grep -qi 'http-equiv="refresh"' _site/index.html
+          grep -q '<loc>https://topazape.dev/index.html</loc>' _site/sitemap.xml
+          grep -q '<link rel="canonical" href="https://topazape.dev/">' _site/index.html
+
+          while IFS= read -r page; do
+            grep -q '<link rel="canonical"' "$page"
+          done < <(find _site/posts -name index.html -type f)
+
       - name: Commit updated _freeze/
         run: |
           git config user.name "github-actions[bot]"
