@@ -1,0 +1,199 @@
+---
+title: "負の二項分布の有限混合モデルによる広告フリークエンシー分布のモデリング"
+draft: true
+draft-mode: unlinked
+date: "2026-09-09"
+categories: ["audience-modeling", "reach-frequency", "statistics"]
+---
+
+フリークエンシー分布は、キャンペーン期間中に各ユーザーが広告へ何回接触したかを表す。
+ストリーミング広告のリーチ・フリークエンシープランニングでは、目標インプレッション数を与えたとき、少なくとも1回広告を見るユニークユーザーが何人になるかを知る必要がある。
+
+この分布には特徴的な形がある。
+ターゲット母集団の大半はインプレッションが0で、リーチされたユーザー数は接触1回から2回にかけて急減し、その後は少数のヘビーユーザーが作る長い右裾に沿って減少する。
+Poisson分布は分散が平均に等しいため、実際のフリークエンシー分布に見られる強い過分散を再現できない。
+負の二項分布は過分散を表せるが、ライト視聴者による0付近の鋭い山と、ヘビー視聴者による長い裾を、一つの分散パラメータだけで同時に合わせることは難しい。
+
+本稿では、合成したフリークエンシー分布に負の二項分布の有限混合モデルを当てはめる。
+`flexmix` のEMアルゴリズムでパラメータを推定し、推定結果からリーチカーブを導出する。
+
+## Poisson–Gamma混合としての負の二項分布
+
+広告接触回数の自然な出発点はPoisson分布である。
+ユーザー $i$ がキャンペーン期間中に一定の接触率 $\lambda_i$ を持つなら、インプレッション数は
+$X_i\mid\lambda_i\sim\text{Poisson}(\lambda_i)$ に従う。
+
+異質な母集団では $\lambda_i$ がユーザー間で異なる。
+接触率にGamma分布を置く。
+
+$$
+  \lambda_i\sim\text{Gamma}\!\left(\theta,\frac{\theta}{\mu}\right)
+$$
+
+$\mu=E[\lambda_i]$ は母平均、$\theta>0$ は分散を制御するパラメータであり、
+$E[\lambda_i]=\mu$、$\text{Var}(\lambda_i)=\mu^2/\theta$ となるようパラメータ化している。
+$\lambda_i$ を積分消去すると、
+
+$$
+  P(X=x)=\binom{x+\theta-1}{x}
+  \left(\frac{\theta}{\theta+\mu}\right)^\theta
+  \left(\frac{\mu}{\theta+\mu}\right)^x,
+  \qquad x=0,1,2,\ldots
+$$
+
+という負の二項分布が得られる。そのモーメントは、
+
+$$
+  E[X]=\mu,\qquad \text{Var}(X)=\mu+\frac{\mu^2}{\theta}
+$$
+
+である。
+$\mu^2/\theta$ が母集団の異質性による超過分散である。
+$\theta\to\infty$ では接触率の個人差が消え、負の二項分布はPoisson分布へ収束する。
+以下では、Rの `glmmTMB::nbinom2` と同じ平均 $\mu$・分散 $\theta$ のパラメータ化を使う。
+
+## 負の二項分布の有限混合
+
+単一の負の二項分布は、母集団全体に一つのGamma分布の接触率を仮定する。
+母集団が、広告をほとんど見ないライト視聴者と、コンテンツ消費量の多いヘビー視聴者のような構造的に異なるセグメントを含む場合、一つのGamma分布では二峰的な接触率分布を表現できない。
+
+有限混合モデルでは、母集団を $K$ 個の潜在セグメントに分ける。
+ユーザーがセグメント $k$ に属する確率を $\pi_k$ とし、セグメント内の接触回数に固有の負の二項分布を置く。
+
+$$
+  P(X=x)=\sum_{k=1}^K\pi_k\cdot\text{NB}(x\mid\mu_k,\theta_k),
+  \qquad \sum_{k=1}^K\pi_k=1
+$$
+
+自由パラメータ数は $3K-1$ である。
+EMアルゴリズムのE-stepでは各観測の事後セグメント所属確率を計算し、M-stepではその確率を重みとして $(\pi_k,\mu_k,\theta_k)$ を再推定する。
+`flexmix` と `countreg::FLXMRnegbin` を組み合わせることで、このモデルを直接推定できる。
+
+成分数 $K$ はBICで選ぶ。
+成分を増やせば対数尤度は必ず改善するため、追加パラメータへ罰則を課し、複雑さに見合う改善が止まる点を選択する。
+
+## シミュレーション
+
+### データ生成
+
+$N=1{,}000{,}000$ 人を、ライト層とヘビー層の二つから生成する。
+
+| セグメント | $\pi$ | $\mu$ | $\theta$ |
+|---|---:|---:|---:|
+| ライト | 0.80 | 0.1 | 0.3 |
+| ヘビー | 0.20 | 3.0 | 1.0 |
+
+ヘビー層は平均接触回数が高い一方、平均に対する接触率の異質性はライト層より小さい。
+セグメント内の分散はライト層で0.13、ヘビー層で12.0となる。
+
+```r
+set.seed(42)
+
+true_params <- tibble::tribble(
+  ~component, ~prior, ~mu, ~theta,
+  "Light",      0.80, 0.1,    0.3,
+  "Heavy",      0.20, 3.0,    1.0
+)
+
+sim_data <- true_params |>
+  dplyr::slice_sample(n = 1000000, weight_by = prior, replace = TRUE) |>
+  dplyr::mutate(
+    user_id = dplyr::row_number(),
+    imp = rnbinom(dplyr::n(), mu = mu, size = theta)
+  )
+
+freq_dist <- sim_data |> dplyr::count(imp, name = "cnt")
+```
+
+集計分布は、$FQ=1$ に鋭い山を持ち、急速に減衰した後、長い右裾へ続く。
+セグメント別に見ると、この形が平均の異なる二つの分布の重ね合わせで生じていることが分かる。
+実務で観測できるのは集計分布だけであり、混合モデルの役割は集計された接触回数から潜在セグメント構造を復元することである。
+
+### 単一の負の二項分布
+
+比較基準として、`glmmTMB` で集計分布へ単一の負の二項分布を当てはめる。
+`weights` に度数を指定すれば、$(x,\text{count})$ の集計表をそのまま利用できる。
+
+```r
+fit_single <- glmmTMB::glmmTMB(
+  data = freq_dist,
+  formula = imp ~ 1,
+  family = glmmTMB::nbinom2,
+  weights = cnt
+)
+```
+
+$\hat\mu$ は母集団全体の平均0.68を正しく復元するが、$\hat\theta$ は真のセグメント内の値0.3と1.0より大幅に小さくなる。
+単一モデルは、セグメント内の過分散とセグメント間の異質性を一つの $\theta$ へ吸収しなければならないためである。
+残差には、低頻度を過小予測し、中程度の頻度を過大予測する系統的な形が残る。
+
+### 混合モデル
+
+$K=2,3,4$ を各50個のランダム初期値から推定し、EMアルゴリズムの局所解への依存を抑える。
+
+```r
+set.seed(42)
+fit_mix <- flexmix::stepFlexmix(
+  data = freq_dist,
+  formula = imp ~ 1,
+  k = 2:4,
+  model = countreg::FLXMRnegbin(),
+  weights = ~cnt,
+  control = list(iter.max = 1000, minprior = 0.05),
+  nrep = 50,
+  verbose = FALSE
+)
+
+fit_best <- flexmix::getModel(fit_mix, which = "BIC")
+```
+
+BICは真の生成過程と同じ2成分を選択する。
+二つの平均には30倍の差があるため、EMアルゴリズムはライト層とヘビー層を明確に分離し、混合比・平均・分散を復元する。
+混合モデルの残差では、単一モデルに見られた系統的な不適合が解消される。
+
+## 混合パラメータからリーチカーブを導く
+
+リーチは1回以上のインプレッションを持つユーザー数である。
+混合モデルの0回確率は、
+
+$$
+  P(X=0)=\sum_{k=1}^K\pi_k
+  \left(\frac{\theta_k}{\theta_k+\mu_k}\right)^{\theta_k}
+$$
+
+なので、母集団サイズを $N$ とすると、
+
+$$
+  \text{Reach}=N\left[1-\sum_{k=1}^K\pi_k
+  \left(\frac{\theta_k}{\theta_k+\mu_k}\right)^{\theta_k}\right]
+$$
+
+となる。
+
+観測インプレッション数を $I_{\text{obs}}$、予測対象を $I_{\text{target}}$ とし、各成分の平均を
+
+$$
+  \mu'_k=\frac{I_{\text{target}}}{I_{\text{obs}}}\mu_k
+$$
+
+と比例拡大する。
+これは、追加インプレッションが元のキャンペーンと同じ相対比率で母集団へ配分されるという仮定である。
+特定セグメントだけへリターゲティングする場合には成立しない。
+
+```r
+reach_from_mixture <- function(target_imp, params_df, total_uu, observed_imp) {
+  s <- target_imp / observed_imp
+  p_zero <- params_df |>
+    dplyr::mutate(
+      scaled_mu = mu * s,
+      p0 = prior * dnbinom(0, mu = scaled_mu, size = theta)
+    ) |>
+    dplyr::summarise(p0 = sum(p0)) |>
+    dplyr::pull(p0)
+  total_uu * (1 - p_zero)
+}
+```
+
+得られるカーブは観測点を通り、インプレッションの増加に対して凹形になる。
+これは、追加インプレッションの割合が次第に、すでにリーチ済みのヘビー視聴者へ吸収され、1インプレッション当たりの増分リーチが小さくなるためである。
+混合モデルは、ヘビー層の高い $\mu$ によって、この反復接触の集中を表現する。

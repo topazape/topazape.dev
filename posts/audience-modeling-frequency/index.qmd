@@ -1,6 +1,8 @@
 ---
 title: >-
   Modeling Ad Frequency Distributions with Finite Mixtures of Negative Binomials
+description: >-
+  Model heterogeneous ad exposure counts with a finite mixture of negative binomial distributions and derive reach curves from the fitted parameters.
 draft: true
 draft-mode: unlinked
 date: "2026-09-09"
@@ -19,7 +21,7 @@ In streaming advertising, this distribution is the input to reach and frequency 
 
 The distribution has a characteristic shape.
 Most users in the target population receive zero impressions.
-Among those reached, the count drops sharply from one to two, then decays with a long right tail produced by a small number of heavy viewers.
+Among those reached, the number of users drops sharply from one exposure to two, then continues to decline along a long right tail produced by a small number of heavy viewers.
 A Poisson distribution cannot reproduce this shape: its variance equals its mean, but empirical frequency distributions are overdispersed, often by an order of magnitude.
 The negative binomial distribution handles overdispersion through an extra parameter, but a single negative binomial still fails to reproduce the shape that arises when the population contains distinct viewing segments: a sharp spike near zero from light viewers and a heavy tail from heavy viewers cannot be matched by a single dispersion parameter.
 
@@ -85,7 +87,7 @@ The model has $3K - 1$ free parameters: $K$ means, $K$ dispersions, and $K - 1$ 
 The parameters are estimated by the EM algorithm.
 The E-step computes posterior segment membership probabilities for each observation; the M-step re-estimates $(\pi_k, \mu_k, \theta_k)$ by weighted maximum likelihood within each segment.
 The `flexmix` package (Grün and Leisch 2008) implements this procedure for general finite mixture models.
-Combined with the `countreg::FLXMRnegbin` driver, it fits mixtures of negative binomials directly.
+With the `countreg::FLXMRnegbin` driver, it can fit mixtures of negative binomial distributions directly.
 
 The number of components $K$ is selected by BIC.
 Adding components always improves log-likelihood; BIC penalizes the additional parameters and identifies the point where added complexity no longer improves fit.
@@ -102,7 +104,7 @@ The parameters reflect a typical frequency distribution in digital advertising: 
   | Light   | 0.80  | 0.1   | 0.3      |
   | Heavy   | 0.20  | 3.0   | 1.0      |
 
-The heavy segment has both a higher mean ($\mu = 3.0$ vs. $0.1$) and a higher $\theta$ ($1.0$ vs. $0.3$): active viewers see more ads and have more stable viewing habits.
+The heavy segment has both a higher mean ($\mu = 3.0$ vs. $0.1$) and a higher $\theta$ ($1.0$ vs. $0.3$): active viewers see more ads, while their exposure rates are less heterogeneous relative to their mean.
 The variance within each segment is $\mu + \mu^2/\theta$: $0.13$ for light, $12.0$ for heavy.
 
 ```{r}
@@ -202,12 +204,12 @@ The component panels show how this shape arises from the superposition of two di
 
 In practice, only the aggregate distribution is observed.
 The per-segment breakdown is unknown.
-The mixture model's task is to recover the segment structure from the aggregate counts alone.
+The mixture model's task is to recover this latent segment structure from the aggregate counts alone.
 
 ### Fitting a single negative binomial
 
 As a baseline, fit a single negative binomial to the aggregate frequency distribution using `glmmTMB`.
-The `weights` argument accepts frequency counts, so the model takes the aggregated table $(x, \text{count})$ directly.
+The `weights` argument accepts frequency counts, allowing the model to use the aggregated table $(x, \text{count})$ directly.
 
 ```{r}
 #| label: fit-single
@@ -462,7 +464,7 @@ $$
 $$
 
 This assumes that increasing the total number of impressions by a factor $s$ increases each user's expected exposure by the same factor.
-The assumption holds when the additional impressions are distributed across the population with the same relative allocation as the original campaign.
+The assumption holds when the additional impressions are distributed across the population in the same relative proportions as in the original campaign.
 It does not hold if the additional impressions are concentrated on specific segments (e.g., retargeting only heavy viewers).
 
 Substituting $\mu_k'$ into the reach formula produces a reach curve: reach as a function of total impressions.
