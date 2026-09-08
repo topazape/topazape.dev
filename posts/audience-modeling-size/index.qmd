@@ -3,6 +3,7 @@ title: >-
   Estimating Unique Users for Arbitrary Genre Combinations with a Bernoulli Mixture Model
 description: >-
   Estimate unique users for arbitrary genre combinations from a viewer panel using a Bernoulli mixture model and closed-form union probabilities.
+image: index_files/figure-html/fig-err-vs-k-1.png
 draft: true
 draft-mode: unlinked
 date: "2026-09-16"
