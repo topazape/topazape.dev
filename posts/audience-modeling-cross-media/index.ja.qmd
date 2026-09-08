@@ -17,7 +17,7 @@ library(tidyverse)
 
 なんらかの共通の ID を使って大規模なサービスログ同士を個人単位で結合できれば、この重複は直接集計できます。しかし実務では、ID空間、計測単位、同意、企業間のデータ共有といった制約があり、母集団規模の突合が常に可能とは限りません。一方、各サービス単体の利用時間分布は大規模ログから精度よく分かり、より小規模なシングルソースパネルなら同じ人の両サービス利用を観測できる場合があります。例えば、ユーザーの協力のもと、複数の動画サービスの利用状況を同一人物について収集した調査データなどです。
 
-本記事では、シミュレーションデータを用い、大規模ログと小規模パネルという 2 つのデータをガウシアンコピュラで融合することで、媒体横断のオーディエンス重複・補完関係を捉えることを目的とします。
+本記事では、シミュレーションデータを用い、大規模ログと小規模パネルという 2 つのデータをガウシアンコピュラで融合することで、両サービス利用者における利用強度の重複・補完関係を捉えることを目的とします。ただし、分析対象者全員について A と B の両方で正の利用時間が観測されると仮定し、利用有無ではなく利用強度の重複を扱います。
 
 ## 周辺分布だけでは決まらないオーディエンス重複
 
@@ -119,19 +119,26 @@ $$
 本分析では、視聴傾向がやや高い集団を 20% 含む視聴傾向混合ケースを中心に扱います。
 
 $$
-  H_{\mathrm{raw}} \sim 0.8N(0,1) + 0.2N(1.5,1), \qquad H
+  B \sim \operatorname{Bernoulli}(0.2), \qquad Z_H
+    \sim N(0,1), \qquad B \perp \!\!\! \perp Z_H
+$$
+
+$B$ は混合成分を選ぶスイッチです。$B = 0$ なら通常の視聴傾向を持つ集団、$B = 1$ なら平均が 1.5 だけ高い集団に属します。潜在利用傾向は次のように生成します。
+
+$$
+  H_{\mathrm{raw}} = 1.5B + Z_H, \qquad H
                    = \frac{H_{\mathrm{raw}} - 0.3}{\sqrt{1.36}}
 $$
 
-$H$ は平均 0、分散 1 に標準化されますが、分布は正規ではありません。したがって、視聴傾向混合ケースではガウシアンコピュラも意図的に近似モデルとなります。
+したがって、$H_{\mathrm{raw}}$ の周辺分布は $0.8N(0,1) + 0.2N(1.5,1)$ となります。ここで 1.5 は、2 集団の分離度を定めるシミュレーション上の設定値です。また、$E[H_{\mathrm{raw}}] = 0.3$、$\operatorname{Var}(H_{\mathrm{raw}}) = 1.36$ であるため、$H$ は平均 0、分散 1 に標準化されます。ただし、分布は正規ではありません。したがって、視聴傾向混合ケースではガウシアンコピュラも意図的に近似モデルとなります。
 
-また、比較の基準として $H \sim N(0,1)$ とする単一集団ケースも用意します。このとき $(\log X,\log Y)$ は二変量正規分布となり、真の依存構造はガウシアンコピュラに厳密に対応します。
+なお、$H \sim N(0,1)$ とすれば $(\log X,\log Y)$ は二変量正規分布となり、真の依存構造はガウシアンコピュラに厳密に対応します。本分析では、より厳しい条件で近似性能を見るため、視聴傾向混合ケースに絞って評価します。
 
 ```{r}
-#| label: simulation-functions
+#| label: simulation-data
 #| cache: true
 #| code-fold: true
-#| code-summary: "シミュレーション関数を表示"
+#| code-summary: "母集団の生成コードを表示"
 
 set.seed(20260907)
 
@@ -141,121 +148,149 @@ n_rep <- 100
 heavy_thresholds <- c(3, 5, 10)
 light_threshold <- 1
 
-make_population <- function(n, scenario) {
-  if (scenario == "normal") {
-    h <- rnorm(n)
-  } else {
-    high <- rbinom(n, 1, 0.2)
-    h_raw <- rnorm(n, mean = 1.5 * high)
-    h <- (h_raw - 0.3) / sqrt(1.36)
-  }
-
-  tibble(
-    h = h,
-    x = exp(log(2) + 0.8 * h + rnorm(n, sd = 0.6)),
-    y = exp(log(1.5) + 0.6 * h + rnorm(n, sd = 0.8))
+population <- tibble(
+  b = rbinom(n_population, 1, 0.2),
+  z_h = rnorm(n_population, mean = 0, sd = 1),
+  eps_x = rnorm(n_population, mean = 0, sd = 0.6),
+  eps_y = rnorm(n_population, mean = 0, sd = 0.8)
+) |>
+  mutate(
+    h_raw = 1.5 * b + z_h,
+    h = (h_raw - 0.3) / sqrt(1.36),
+    x = exp(log(2) + 0.8 * h + eps_x),
+    y = exp(log(1.5) + 0.6 * h + eps_y),
+    sampling_weight = 0.5 + 0.4 * plogis(1.5 * h)
   )
-}
 
-gaussian_copula_cdf <- function(u, v, rho) {
-  gaussian <- copula::normalCopula(param = rho, dim = 2, dispstr = "un")
-  as.numeric(copula::pCopula(c(u, v), gaussian))
-}
-
-event_probabilities <- function(fx_h, fy_h, fx_l, fy_l, rho) {
-  c(
-    both_heavy = 1 - fx_h - fy_h + gaussian_copula_cdf(fx_h, fy_h, rho),
-    a_heavy_b_light = fy_l - gaussian_copula_cdf(fx_h, fy_l, rho),
-    a_light_b_heavy = fx_l - gaussian_copula_cdf(fx_l, fy_h, rho)
-  )
-}
-
-evaluate_population <- function(pop, scenario, biased, n_rep = 100) {
-  fx_l <- mean(pop$x < light_threshold)
-  fy_l <- mean(pop$y < light_threshold)
-  uv_population <- copula::pobs(cbind(pop$x, pop$y))
-  rho_population <- cor(
-    qnorm(uv_population[, 1]),
-    qnorm(uv_population[, 2])
-  )
-  sampling_weight <- if (biased) {
-    0.5 + 0.4 * plogis(1.5 * pop$h)
-  } else {
-    NULL
-  }
-
-  map_dfr(seq_len(n_rep), function(rep_id) {
-    idx <- sample.int(
-      nrow(pop),
-      n_panel,
-      replace = FALSE,
-      prob = sampling_weight
+rho_population <- population |>
+  summarise(
+    rho = cor(
+      qnorm(rank(x) / (n() + 1)),
+      qnorm(rank(y) / (n() + 1))
     )
-    panel <- pop[idx, ]
-    uv_panel <- copula::pobs(cbind(panel$x, panel$y))
-    rho_panel <- cor(
-      qnorm(uv_panel[, 1]),
-      qnorm(uv_panel[, 2])
-    )
+  ) |>
+  pull(rho)
 
-    map_dfr(heavy_thresholds, function(heavy) {
-      fx_h <- mean(pop$x < heavy)
-      fy_h <- mean(pop$y < heavy)
-
-      truth <- c(
-        both_heavy = mean(pop$x >= heavy & pop$y >= heavy),
-        a_heavy_b_light = mean(pop$x >= heavy & pop$y < light_threshold),
-        a_light_b_heavy = mean(pop$x < light_threshold & pop$y >= heavy)
-      )
-      independence <- c(
-        both_heavy = (1 - fx_h) * (1 - fy_h),
-        a_heavy_b_light = (1 - fx_h) * fy_l,
-        a_light_b_heavy = fx_l * (1 - fy_h)
-      )
-      direct <- c(
-        both_heavy = mean(panel$x >= heavy & panel$y >= heavy),
-        a_heavy_b_light = mean(panel$x >= heavy & panel$y < light_threshold),
-        a_light_b_heavy = mean(panel$x < light_threshold & panel$y >= heavy)
-      )
-      fusion <- event_probabilities(fx_h, fy_h, fx_l, fy_l, rho_panel)
-      oracle <- event_probabilities(fx_h, fy_h, fx_l, fy_l, rho_population)
-
-      tibble(
-        scenario = scenario,
-        selection = if_else(biased, "biased", "unbiased"),
-        rep = rep_id,
-        heavy = heavy,
-        metric = names(truth),
-        truth = unname(truth),
-        independence = unname(independence),
-        direct = unname(direct),
-        fusion = unname(fusion),
-        oracle = unname(oracle),
-        rho_panel = rho_panel,
-        rho_population = rho_population,
-        panel_h_mean = mean(panel$h)
-      )
-    })
-  })
-}
+population_summary <- population |>
+  select(x, y) |>
+  cross_join(tibble(heavy = heavy_thresholds)) |>
+  mutate(
+    a_heavy = x >= heavy,
+    b_heavy = y >= heavy,
+    a_light = x < light_threshold,
+    b_light = y < light_threshold
+  ) |>
+  summarise(
+    fx_h = mean(!a_heavy),
+    fy_h = mean(!b_heavy),
+    fx_l = mean(a_light),
+    fy_l = mean(b_light),
+    both_heavy = mean(a_heavy & b_heavy),
+    a_heavy_b_light = mean(a_heavy & b_light),
+    a_light_b_heavy = mean(a_light & b_heavy),
+    .by = heavy
+  ) |>
+  pivot_longer(
+    c(both_heavy, a_heavy_b_light, a_light_b_heavy),
+    names_to = "metric",
+    values_to = "truth"
+  )
 ```
 
 ```{r}
 #| label: run-simulation
 #| cache: true
-#| dependson: simulation-functions
+#| dependson: simulation-data
 #| code-fold: true
 #| code-summary: "シミュレーションの実行コードを表示"
 
-pop_normal <- make_population(n_population, "normal")
-pop_non_normal <- make_population(n_population, "non-normal")
+panels <- tibble(rep = seq_len(n_rep)) |>
+  mutate(
+    panel = map(rep, \(.) {
+      population |>
+        slice_sample(n = n_panel, weight_by = sampling_weight)
+    })
+  ) |>
+  unnest(panel) |>
+  mutate(
+    u = rank(x) / (n() + 1),
+    v = rank(y) / (n() + 1),
+    rho_panel = cor(qnorm(u), qnorm(v)),
+    panel_h_mean = mean(h),
+    .by = rep
+  )
 
-simulation_raw <- bind_rows(
-  evaluate_population(pop_normal, "normal", FALSE, n_rep),
-  evaluate_population(pop_normal, "normal", TRUE, n_rep),
-  evaluate_population(pop_non_normal, "non-normal", FALSE, n_rep),
-  evaluate_population(pop_non_normal, "non-normal", TRUE, n_rep)
-)
+panel_summary <- panels |>
+  select(rep, x, y, rho_panel, panel_h_mean) |>
+  cross_join(tibble(heavy = heavy_thresholds)) |>
+  mutate(
+    a_heavy = x >= heavy,
+    b_heavy = y >= heavy,
+    a_light = x < light_threshold,
+    b_light = y < light_threshold
+  ) |>
+  summarise(
+    both_heavy = mean(a_heavy & b_heavy),
+    a_heavy_b_light = mean(a_heavy & b_light),
+    a_light_b_heavy = mean(a_light & b_heavy),
+    rho_panel = first(rho_panel),
+    panel_h_mean = first(panel_h_mean),
+    .by = c(rep, heavy)
+  ) |>
+  pivot_longer(
+    c(both_heavy, a_heavy_b_light, a_light_b_heavy),
+    names_to = "metric",
+    values_to = "direct"
+  )
+
+simulation_raw <- panel_summary |>
+  left_join(population_summary, by = c("heavy", "metric")) |>
+  mutate(
+    copula_u = if_else(metric == "a_light_b_heavy", fx_l, fx_h),
+    copula_v = if_else(metric == "a_heavy_b_light", fy_l, fy_h)
+  ) |>
+  mutate(
+    cdf_panel = copula::pCopula(
+      cbind(copula_u, copula_v),
+      copula::normalCopula(
+        param = first(rho_panel),
+        dim = 2,
+        dispstr = "un"
+      )
+    ),
+    .by = rep
+  ) |>
+  mutate(
+    cdf_population = copula::pCopula(
+      cbind(copula_u, copula_v),
+      copula::normalCopula(
+        param = rho_population,
+        dim = 2,
+        dispstr = "un"
+      )
+    ),
+    cdf_base = case_when(
+      metric == "both_heavy" ~ 1 - fx_h - fy_h,
+      metric == "a_heavy_b_light" ~ fy_l,
+      metric == "a_light_b_heavy" ~ fx_l
+    ),
+    cdf_sign = if_else(metric == "both_heavy", 1, -1),
+    independence = cdf_base + cdf_sign * copula_u * copula_v,
+    fusion = cdf_base + cdf_sign * cdf_panel,
+    oracle = cdf_base + cdf_sign * cdf_population
+  ) |>
+  select(
+    rep,
+    heavy,
+    metric,
+    truth,
+    independence,
+    direct,
+    fusion,
+    oracle,
+    rho_panel,
+    panel_h_mean
+  )
 
 simulation_long <- simulation_raw |>
   pivot_longer(
@@ -271,15 +306,15 @@ simulation_summary <- simulation_long |>
     bias_pp = 100 * mean(estimate - truth),
     sd_pp = 100 * sd(estimate),
     rmse_pp = 100 * sqrt(mean((estimate - truth)^2)),
-    .by = c(scenario, selection, heavy, metric, method)
+    .by = c(heavy, metric, method)
   )
 ```
 
 ### 大規模な周辺データと小規模パネル
 
-各サービスの大規模データには母集団50万人の経験分布をそのまま使います。つまり、このシミュレーションでは周辺分布をほぼ既知として扱います。一方、同じ人の $X,Y$ を観測できるパネルは1,000人に限ります。
+各サービスの大規模データには母集団 50 万人の経験分布をそのまま使います。つまり、このシミュレーションでは周辺分布をほぼ既知として扱います。一方、同じ人の $X,Y$ を観測できるパネルは 1,000 人に限ります。
 
-パネルには、一様抽出に加えて偏った抽出も用意します。共通の視聴傾向 $H$ が高いほど選ばれやすくなるよう、相対抽出重みを
+パネルは、共通の視聴傾向 $H$ が高いほど選ばれやすい偏った標本とします。相対抽出重みを
 
 $$
   w(H) = 0.5 + 0.4\operatorname{logit}^{-1}(1.5H)
@@ -290,12 +325,13 @@ $$
 ```{r}
 #| label: fig-joint-usage
 #| fig-cap: >-
-#|   非正規の視聴傾向混合ケースから抽出した5,000人の週次利用時間。 共通の視聴傾向により、両サービスの利用時間には正の依存が生じている。
+#|   非正規の視聴傾向混合ケースから抽出した 5,000 人の週次利用時間.
+#|   共通の視聴傾向による両サービス利用時間の正の依存.
 #| echo: false
 #| message: false
 
 set.seed(20260907)
-pop_non_normal |>
+population |>
   slice_sample(n = 5000) |>
   ggplot(aes(x = x, y = y)) +
   geom_point(alpha = 0.2, size = 0.7, color = "darkslategray") +
@@ -335,7 +371,8 @@ pop_non_normal |>
 ```{r}
 #| label: tbl-main-results
 #| tbl-cap: >-
-#|   非正規の視聴傾向混合ケース・偏ったパネル・ヘビー閾値5時間での推定性能。 バイアス、標準偏差、RMSEの単位はpp。
+#|   視聴傾向混合ケース, 偏ったパネル, ヘビー閾値 5 時間での推定性能.
+#|   バイアス, 標準偏差, RMSE の単位は pp.
 #| echo: false
 #| message: false
 
@@ -348,13 +385,11 @@ metric_labels <- c(
 method_labels <- c(
   independence = "独立仮定",
   direct = "パネル直接集計",
-  fusion = "Gaussian融合"
+  fusion = "コピュラ融合"
 )
 
 simulation_summary |>
   filter(
-    scenario == "non-normal",
-    selection == "biased",
     heavy == 5,
     method %in% names(method_labels)
   ) |>
@@ -387,14 +422,13 @@ A ヘビー・B ライトと A ライト・B ヘビーでも、コピュラ融�
 ```{r}
 #| label: fig-rmse
 #| fig-cap: >-
-#|   非正規の視聴傾向混合ケース・偏ったパネルでのRMSE。ライト閾値は1時間、横軸はヘビー閾値、縦軸の単位はpp。
+#|   非正規の視聴傾向混合ケース, 偏ったパネルでの RMSE.
+#|   ライト閾値 1 時間, 横軸はヘビー閾値, 縦軸の単位は pp.
 #| echo: false
 #| message: false
 
 simulation_summary |>
   filter(
-    scenario == "non-normal",
-    selection == "biased",
     method %in% c("direct", "fusion")
   ) |>
   mutate(
@@ -476,10 +510,6 @@ $$
 
 本記事の週 3、5、10 時間という通常のセグメント閾値ではガウシアンを基準モデルとしました。モデル選択では全体の適合度だけでなく、最終的に使う重複指標をパネル上でどれだけ再現するかを見る必要があります。
 
-## 実データにおける0時間の扱い
+## 実データにおける 0 時間の扱い
 
-シミュレーションでは説明を明確にするため、利用時間を正の連続量としました。実際の週次データでは、サービスをまったく使わなかったユーザーが多く、$P(X = 0) > 0$、$P(Y = 0) > 0$ となります。そうすると同順位が大量に発生するため、連続分布を前提とした順位変換をそのまま適用するのは適切ではありません。
-
-実務では、まず利用有無を、次に利用者内の正の利用時間を扱う構成が自然です。非利用・利用の同時確率と、正の利用時間における依存を分けて推定するように拡張します。この場合は「両方を利用しない」「Aだけ利用する」といった離散部分も明示的な推定対象になります。
-
-このような拡張は必要ですが、周辺分布を大規模データから取得し、両サービスの利用時間の依存構造を小規模パネルから得るという基本的な考え方は変わりません。重要なのは、パネルで観測された依存構造が母集団へ移送できるかを確認することです。その条件が満たされるなら、個票ログ同士を直接結合できない場合でも、媒体をまたぐ利用者の重複や補完関係を推定できます。
+実際の週次データでは非利用者による 0 時間が多く、同順位が大量に発生するため、連続分布を前提とした順位変換をそのまま適用するのは適切ではありません。この場合は、利用有無と利用者内の正の利用時間を分けて推定します。前者で「両方を利用しない」「Aだけ利用する」といった離散部分を、後者で正の利用時間の依存構造を扱います。

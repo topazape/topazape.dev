@@ -1,5 +1,5 @@
 ---
-title: "Estimating Cross-Media Usage Patterns from Large Marginal Distributions and a Small Panel"
+title: "Estimating Cross-Platform Usage Structure from Large-Scale Marginal Distributions and a Small Panel"
 description: >-
   Fuse large-scale service logs with a small single-source panel using a Gaussian copula to estimate cross-media audience overlap and complementarity.
 draft: true
@@ -15,51 +15,64 @@ categories: ["audience-modeling", "data-fusion", "statistics"]
 library(tidyverse)
 ```
 
-Suppose there are two video services, A and B. We have the usage-time distribution for each service, so we know the share of people who use A for at least five hours per week and the share who use B for at least five hours per week. These data alone, however, do not tell us the share who use both services for at least five hours per week. That requires not only each service's usage-time distribution but also information about how the same people divide their time between the two services.
+Suppose there are two video services, A and B.
+We know the usage-time distribution for each service, including the share of people who use A for at least five hours per week and the corresponding share for B.
+These data alone, however, do not reveal how many people use both services for at least five hours per week.
+That calculation requires not only the marginal distribution of each service but also information about how the same individuals divide their time between the two.
 
-If large service logs could be linked at the individual level through a common ID, this overlap could be calculated directly. In practice, however, constraints involving ID spaces, units of measurement, consent, and intercompany data sharing mean that population-scale matching is not always possible. At the same time, large logs can provide accurate usage-time distributions for each service, while a smaller single-source panel may observe both services for the same people—for example, survey data collected with users' cooperation on their use of multiple video services.
+If large-scale service logs could be linked at the individual level through a common identifier, the overlap could be counted directly.
+In practice, population-scale linkage is not always feasible because of constraints involving identity spaces, units of measurement, consent, and intercompany data sharing.
+At the same time, each service's usage-time distribution may be measured accurately from large-scale logs, while a smaller single-source panel may observe both services for the same people.
+One example is survey data collected from consenting users about their activity across multiple video services.
 
-Using simulated data, this article aims to capture cross-media audience overlap and complementarity by fusing large-scale logs with a small panel through a Gaussian copula.
+Using simulated data, this article combines large-scale logs and a small panel through a Gaussian copula to estimate overlap and complementarity in usage intensity among users of both services.
+For simplicity, every person in the analysis is assumed to have positive usage time for both A and B.
+The target is therefore overlap in usage intensity, not whether each service is used at all.
 
-## Marginal Distributions Do Not Determine Audience Overlap
+## Audience overlap beyond marginal distributions
 
-Let $X$ and $Y$ denote weekly usage time for Services A and B, respectively. Suppose large-scale logs provide the marginal distributions
+Let $X$ and $Y$ denote weekly usage time for services A and B.
+Even if large-scale logs identify the marginal distributions
 
 $$
   F_X(x) = P(X \leq x), \qquad F_Y(y) = P(Y \leq y)
 $$
 
-Even with these distributions, the joint distribution $F_{XY}(x,y)$ is not uniquely determined. For example, even if 20% of people use A for at least five hours per week and 20% use B for at least five hours per week, the share of heavy users of both varies greatly depending on whether those groups consist of nearly the same people or almost entirely different people.
+the joint distribution $F_{XY}(x,y)$ is not uniquely determined.
+For example, even if 20% of people use A for at least five hours per week and 20% do the same for B, the share of heavy users of both services depends greatly on whether those two groups contain mostly the same people or mostly different people.
 
-The simplest assumption is independence. In that case,
+The simplest assumption is independence, which gives
 
 $$
   P(X \geq 5, Y \geq 5) = P(X \geq 5)P(Y \geq 5)
 $$
 
-However, if available time, interest in video, or lifestyle habits affect the use of both services, the independence assumption will tend to underestimate overlap.
+However, if available time, interest in video, and daily routines affect usage of both services, the independence assumption will tend to underestimate overlap.
 
-Alternatively, the overlap rate can be calculated directly from the small panel alone. The error becomes large, however, for combinations with few qualifying respondents. If the panel's usage-time distributions differ from those of the population, the estimate also directly inherits that bias.
+Another option is to estimate overlap directly from the small panel.
+Error becomes large, however, for combinations represented by few panelists.
+The estimate also inherits any discrepancy between the panel's usage-time distribution and that of the population.
 
-## Separating Marginal Distributions from Dependence with a Copula
+## Separation of marginal distributions and dependence with a copula
 
-With a copula, the joint distribution can be written as
+A copula expresses the joint distribution as
 
 $$
   F_{XY}(x,y) = C_\theta\!\left( F_X(x), F_Y(y) \right)
 $$
 
-Here, $F_X$ and $F_Y$ are the service-specific usage-time distributions, and $C_\theta$ is their dependence structure. This decomposition assigns the data sources as follows.
+where $F_X$ and $F_Y$ are the service-specific usage-time distributions and $C_\theta$ is their dependence structure.
+This decomposition assigns a distinct role to each data source.
 
-  | Quantity estimated | Data used | Information obtained |
-  | ------------------ | --------- | -------------------- |
-  | $F_X$ | Large-scale logs from Service A | Distribution of usage time for A |
-  | $F_Y$ | Large-scale logs from Service B | Distribution of usage time for B |
-  | $C_\theta$ | Small panel observing the same individuals | Rank association between A and B |
+  | Quantity   | Data source                                | Information supplied by the data |
+  | ---------- | ------------------------------------------ | -------------------------------- |
+  | $F_X$      | Large-scale logs for service A             | Usage-time distribution for A    |
+  | $F_Y$      | Large-scale logs for service B             | Usage-time distribution for B    |
+  | $C_\theta$ | Small panel observing the same individuals | Rank dependence between A and B  |
 
-This article uses a Gaussian copula for the dependence structure, implemented with [{copula}](https://cran.r-project.org/package=copula).
+This article uses a Gaussian copula for the dependence structure, implemented with the [{copula}](https://cran.r-project.org/package=copula) package.
 
-A Gaussian copula places correlation $\rho$ on latent standard normal variables $(Z_X,Z_Y)$:
+A Gaussian copula assigns correlation $\rho$ to latent standard normal variables $(Z_X,Z_Y)$:
 
 $$
   (Z_X,Z_Y) \sim N\!\left(
@@ -68,27 +81,35 @@ $$
   \right)
 $$
 
-When $\rho = 0$, the services are independent; when $\rho > 0$, people with a higher usage rank for one service also tend to rank higher for the other. This does not assume that usage time itself is normally distributed. Skewed distributions, or distributions with different shapes across services, are handled by $F_X$ and $F_Y$.
+When $\rho = 0$, the services are independent.
+When $\rho > 0$, people with a high usage rank for one service also tend to rank highly for the other.
+This model does not assume that usage time itself is normally distributed.
+Skewed distributions and differences in shape between services are handled by $F_X$ and $F_Y$.
 
-## Estimating Dependence from a Small Panel
+## Dependence estimation from a small panel
 
-Let the panel size be $n$. Convert usage times to ranks within the panel and divide them by $n + 1$ to prevent values of zero and one.
+Let the panel size be $n$.
+Usage times are ranked within the panel and divided by $n + 1$, preventing values of exactly 0 or 1.
 
 $$
   U_i = \frac{\operatorname{rank}(X_i)}{n + 1}, \qquad V_i
       = \frac{\operatorname{rank}(Y_i)}{n + 1}
 $$
 
-Next, transform them into normal scores and estimate their correlation.
+The ranks are then transformed into normal scores, and their correlation is estimated.
 
 $$
   Z_{Xi} = \Phi^{-1}(U_i), \qquad Z_{Yi}
          = \Phi^{-1}(V_i), \qquad \hat\rho = \operatorname{Cor}(Z_X,Z_Y)
 $$
 
-The key is to use within-panel ranks to estimate dependence and the marginal distributions from the large logs to map ranks back to usage times. Directly substituting observations from a biased panel into the population CDF does not produce uniform pseudo-observations. Using within-panel ranks does not eliminate selection bias either. We examine this point later.
+The key distinction is that within-panel ranks are used to estimate dependence, whereas the marginal distributions from the large-scale logs map probabilities back to usage times.
+Applying the population CDF directly to observations from a biased panel would not produce uniform pseudo-observations.
+Using within-panel ranks does not, however, eliminate selection bias.
+This limitation is examined later.
 
-Combining the estimated $\hat\rho$ with marginal distributions from the large logs allows us to calculate overlap for any threshold. For example,
+Combining the estimated $\hat\rho$ with the marginal distributions from large-scale logs yields overlap estimates for any threshold.
+For example,
 
 $$
   \begin{aligned}
@@ -98,13 +119,15 @@ $$
   \end{aligned}
 $$
 
-Once the joint distribution is estimated through a copula, segments can later be changed to thresholds such as “at least three hours per week” or “at least ten hours per week,” enabling a variety of applications from richer information.
+Once the joint distribution has been estimated through a copula, thresholds such as at least three or ten hours per week can be changed after estimation.
+The model therefore supports a richer range of downstream analyses than a single precomputed overlap statistic.
 
-## Simulation Design
+## Simulation design
 
-### Generating Usage Time from a Shared Viewing Propensity
+### Usage-time generation from a shared viewing propensity
 
-The population consists of 500,000 people. We introduce a shared factor $H_i$ representing each user's propensity to watch video and generate weekly usage times as follows.
+The population contains 500,000 people.
+A shared factor $H_i$ represents each person's propensity to watch video, and weekly usage times are generated as follows.
 
 $$
   \log X_i = \log 2 + 0.8H_i + \varepsilon_{Ai}, \qquad \varepsilon_{Ai}
@@ -116,24 +139,40 @@ $$
            \sim N(0,0.8^2)
 $$
 
-The error terms are mutually independent and independent of $H_i$. The factor $H_i$ is a hypothetical composite of interest in video, leisure time, habits, and similar characteristics. When $H_i = 0$, the conditional median is two hours for A and 1.5 hours for B.
+The error terms are mutually independent and independent of $H_i$.
+The latent factor summarizes hypothetical characteristics such as interest in video, available leisure time, and viewing habits.
+Conditional on $H_i = 0$, median weekly usage is two hours for A and 1.5 hours for B.
 
-The analysis focuses on a mixed-propensity case in which 20% of the population has a somewhat higher viewing propensity.
+The main simulation uses a mixture in which 20% of the population has a somewhat higher viewing propensity.
 
 $$
-  H_{\mathrm{raw}} \sim 0.8N(0,1) + 0.2N(1.5,1), \qquad H
+  B \sim \operatorname{Bernoulli}(0.2), \qquad Z_H
+    \sim N(0,1), \qquad B \perp \!\!\! \perp Z_H
+$$
+
+The variable $B$ is a switch selecting the mixture component.
+When $B = 0$, a person belongs to the group with the baseline viewing propensity.
+When $B = 1$, the person belongs to a group whose mean is 1.5 higher.
+The latent usage propensity is generated as follows.
+
+$$
+  H_{\mathrm{raw}} = 1.5B + Z_H, \qquad H
                    = \frac{H_{\mathrm{raw}} - 0.3}{\sqrt{1.36}}
 $$
 
-$H$ is standardized to have mean zero and variance one, but its distribution is not normal. The Gaussian copula is therefore deliberately an approximation in the mixed-propensity case.
+The marginal distribution of $H_{\mathrm{raw}}$ is therefore $0.8N(0,1) + 0.2N(1.5,1)$.
+Here, 1.5 is a simulation parameter controlling the separation between the two groups.
+Because $E[H_{\mathrm{raw}}] = 0.3$ and $\operatorname{Var}(H_{\mathrm{raw}}) = 1.36$, $H$ is standardized to mean 0 and variance 1.
+Its distribution remains nonnormal, making the Gaussian copula intentionally misspecified as an approximation in this mixture scenario.
 
-For comparison, we also include a single-population case with $H \sim N(0,1)$. In this case, $(\log X,\log Y)$ follows a bivariate normal distribution, and the true dependence structure corresponds exactly to a Gaussian copula.
+If instead $H \sim N(0,1)$, then $(\log X,\log Y)$ follows a bivariate normal distribution and its true dependence structure corresponds exactly to a Gaussian copula.
+The evaluation focuses on the mixture scenario to assess approximation performance under more demanding conditions.
 
 ```{r}
-#| label: simulation-functions
+#| label: simulation-data
 #| cache: true
 #| code-fold: true
-#| code-summary: "Show simulation functions"
+#| code-summary: "Show population-generation code"
 
 set.seed(20260907)
 
@@ -143,121 +182,149 @@ n_rep <- 100
 heavy_thresholds <- c(3, 5, 10)
 light_threshold <- 1
 
-make_population <- function(n, scenario) {
-  if (scenario == "normal") {
-    h <- rnorm(n)
-  } else {
-    high <- rbinom(n, 1, 0.2)
-    h_raw <- rnorm(n, mean = 1.5 * high)
-    h <- (h_raw - 0.3) / sqrt(1.36)
-  }
-
-  tibble(
-    h = h,
-    x = exp(log(2) + 0.8 * h + rnorm(n, sd = 0.6)),
-    y = exp(log(1.5) + 0.6 * h + rnorm(n, sd = 0.8))
+population <- tibble(
+  b = rbinom(n_population, 1, 0.2),
+  z_h = rnorm(n_population, mean = 0, sd = 1),
+  eps_x = rnorm(n_population, mean = 0, sd = 0.6),
+  eps_y = rnorm(n_population, mean = 0, sd = 0.8)
+) |>
+  mutate(
+    h_raw = 1.5 * b + z_h,
+    h = (h_raw - 0.3) / sqrt(1.36),
+    x = exp(log(2) + 0.8 * h + eps_x),
+    y = exp(log(1.5) + 0.6 * h + eps_y),
+    sampling_weight = 0.5 + 0.4 * plogis(1.5 * h)
   )
-}
 
-gaussian_copula_cdf <- function(u, v, rho) {
-  gaussian <- copula::normalCopula(param = rho, dim = 2, dispstr = "un")
-  as.numeric(copula::pCopula(c(u, v), gaussian))
-}
-
-event_probabilities <- function(fx_h, fy_h, fx_l, fy_l, rho) {
-  c(
-    both_heavy = 1 - fx_h - fy_h + gaussian_copula_cdf(fx_h, fy_h, rho),
-    a_heavy_b_light = fy_l - gaussian_copula_cdf(fx_h, fy_l, rho),
-    a_light_b_heavy = fx_l - gaussian_copula_cdf(fx_l, fy_h, rho)
-  )
-}
-
-evaluate_population <- function(pop, scenario, biased, n_rep = 100) {
-  fx_l <- mean(pop$x < light_threshold)
-  fy_l <- mean(pop$y < light_threshold)
-  uv_population <- copula::pobs(cbind(pop$x, pop$y))
-  rho_population <- cor(
-    qnorm(uv_population[, 1]),
-    qnorm(uv_population[, 2])
-  )
-  sampling_weight <- if (biased) {
-    0.5 + 0.4 * plogis(1.5 * pop$h)
-  } else {
-    NULL
-  }
-
-  map_dfr(seq_len(n_rep), function(rep_id) {
-    idx <- sample.int(
-      nrow(pop),
-      n_panel,
-      replace = FALSE,
-      prob = sampling_weight
+rho_population <- population |>
+  summarise(
+    rho = cor(
+      qnorm(rank(x) / (n() + 1)),
+      qnorm(rank(y) / (n() + 1))
     )
-    panel <- pop[idx, ]
-    uv_panel <- copula::pobs(cbind(panel$x, panel$y))
-    rho_panel <- cor(
-      qnorm(uv_panel[, 1]),
-      qnorm(uv_panel[, 2])
-    )
+  ) |>
+  pull(rho)
 
-    map_dfr(heavy_thresholds, function(heavy) {
-      fx_h <- mean(pop$x < heavy)
-      fy_h <- mean(pop$y < heavy)
-
-      truth <- c(
-        both_heavy = mean(pop$x >= heavy & pop$y >= heavy),
-        a_heavy_b_light = mean(pop$x >= heavy & pop$y < light_threshold),
-        a_light_b_heavy = mean(pop$x < light_threshold & pop$y >= heavy)
-      )
-      independence <- c(
-        both_heavy = (1 - fx_h) * (1 - fy_h),
-        a_heavy_b_light = (1 - fx_h) * fy_l,
-        a_light_b_heavy = fx_l * (1 - fy_h)
-      )
-      direct <- c(
-        both_heavy = mean(panel$x >= heavy & panel$y >= heavy),
-        a_heavy_b_light = mean(panel$x >= heavy & panel$y < light_threshold),
-        a_light_b_heavy = mean(panel$x < light_threshold & panel$y >= heavy)
-      )
-      fusion <- event_probabilities(fx_h, fy_h, fx_l, fy_l, rho_panel)
-      oracle <- event_probabilities(fx_h, fy_h, fx_l, fy_l, rho_population)
-
-      tibble(
-        scenario = scenario,
-        selection = if_else(biased, "biased", "unbiased"),
-        rep = rep_id,
-        heavy = heavy,
-        metric = names(truth),
-        truth = unname(truth),
-        independence = unname(independence),
-        direct = unname(direct),
-        fusion = unname(fusion),
-        oracle = unname(oracle),
-        rho_panel = rho_panel,
-        rho_population = rho_population,
-        panel_h_mean = mean(panel$h)
-      )
-    })
-  })
-}
+population_summary <- population |>
+  select(x, y) |>
+  cross_join(tibble(heavy = heavy_thresholds)) |>
+  mutate(
+    a_heavy = x >= heavy,
+    b_heavy = y >= heavy,
+    a_light = x < light_threshold,
+    b_light = y < light_threshold
+  ) |>
+  summarise(
+    fx_h = mean(!a_heavy),
+    fy_h = mean(!b_heavy),
+    fx_l = mean(a_light),
+    fy_l = mean(b_light),
+    both_heavy = mean(a_heavy & b_heavy),
+    a_heavy_b_light = mean(a_heavy & b_light),
+    a_light_b_heavy = mean(a_light & b_heavy),
+    .by = heavy
+  ) |>
+  pivot_longer(
+    c(both_heavy, a_heavy_b_light, a_light_b_heavy),
+    names_to = "metric",
+    values_to = "truth"
+  )
 ```
 
 ```{r}
 #| label: run-simulation
 #| cache: true
-#| dependson: simulation-functions
+#| dependson: simulation-data
 #| code-fold: true
 #| code-summary: "Show simulation code"
 
-pop_normal <- make_population(n_population, "normal")
-pop_non_normal <- make_population(n_population, "non-normal")
+panels <- tibble(rep = seq_len(n_rep)) |>
+  mutate(
+    panel = map(rep, \(.) {
+      population |>
+        slice_sample(n = n_panel, weight_by = sampling_weight)
+    })
+  ) |>
+  unnest(panel) |>
+  mutate(
+    u = rank(x) / (n() + 1),
+    v = rank(y) / (n() + 1),
+    rho_panel = cor(qnorm(u), qnorm(v)),
+    panel_h_mean = mean(h),
+    .by = rep
+  )
 
-simulation_raw <- bind_rows(
-  evaluate_population(pop_normal, "normal", FALSE, n_rep),
-  evaluate_population(pop_normal, "normal", TRUE, n_rep),
-  evaluate_population(pop_non_normal, "non-normal", FALSE, n_rep),
-  evaluate_population(pop_non_normal, "non-normal", TRUE, n_rep)
-)
+panel_summary <- panels |>
+  select(rep, x, y, rho_panel, panel_h_mean) |>
+  cross_join(tibble(heavy = heavy_thresholds)) |>
+  mutate(
+    a_heavy = x >= heavy,
+    b_heavy = y >= heavy,
+    a_light = x < light_threshold,
+    b_light = y < light_threshold
+  ) |>
+  summarise(
+    both_heavy = mean(a_heavy & b_heavy),
+    a_heavy_b_light = mean(a_heavy & b_light),
+    a_light_b_heavy = mean(a_light & b_heavy),
+    rho_panel = first(rho_panel),
+    panel_h_mean = first(panel_h_mean),
+    .by = c(rep, heavy)
+  ) |>
+  pivot_longer(
+    c(both_heavy, a_heavy_b_light, a_light_b_heavy),
+    names_to = "metric",
+    values_to = "direct"
+  )
+
+simulation_raw <- panel_summary |>
+  left_join(population_summary, by = c("heavy", "metric")) |>
+  mutate(
+    copula_u = if_else(metric == "a_light_b_heavy", fx_l, fx_h),
+    copula_v = if_else(metric == "a_heavy_b_light", fy_l, fy_h)
+  ) |>
+  mutate(
+    cdf_panel = copula::pCopula(
+      cbind(copula_u, copula_v),
+      copula::normalCopula(
+        param = first(rho_panel),
+        dim = 2,
+        dispstr = "un"
+      )
+    ),
+    .by = rep
+  ) |>
+  mutate(
+    cdf_population = copula::pCopula(
+      cbind(copula_u, copula_v),
+      copula::normalCopula(
+        param = rho_population,
+        dim = 2,
+        dispstr = "un"
+      )
+    ),
+    cdf_base = case_when(
+      metric == "both_heavy" ~ 1 - fx_h - fy_h,
+      metric == "a_heavy_b_light" ~ fy_l,
+      metric == "a_light_b_heavy" ~ fx_l
+    ),
+    cdf_sign = if_else(metric == "both_heavy", 1, -1),
+    independence = cdf_base + cdf_sign * copula_u * copula_v,
+    fusion = cdf_base + cdf_sign * cdf_panel,
+    oracle = cdf_base + cdf_sign * cdf_population
+  ) |>
+  select(
+    rep,
+    heavy,
+    metric,
+    truth,
+    independence,
+    direct,
+    fusion,
+    oracle,
+    rho_panel,
+    panel_h_mean
+  )
 
 simulation_long <- simulation_raw |>
   pivot_longer(
@@ -273,31 +340,37 @@ simulation_summary <- simulation_long |>
     bias_pp = 100 * mean(estimate - truth),
     sd_pp = 100 * sd(estimate),
     rmse_pp = 100 * sqrt(mean((estimate - truth)^2)),
-    .by = c(scenario, selection, heavy, metric, method)
+    .by = c(heavy, metric, method)
   )
 ```
 
-### Large Marginal Data and a Small Panel
+### Large-scale marginal data and a small panel
 
-For each service's large-scale data, we use the empirical distribution of the full population of 500,000. Thus, the marginal distributions are treated as nearly known in this simulation. The panel in which $X$ and $Y$ can be observed for the same people, by contrast, is limited to 1,000 respondents.
+For each service, the empirical distribution of the full population of 500,000 is used as the large-scale dataset.
+The marginal distributions are therefore treated as nearly known in this simulation.
+By contrast, the panel that observes both $X$ and $Y$ for the same people contains only 1,000 individuals.
 
-In addition to uniform sampling, we consider biased panel sampling. To make people with a higher shared viewing propensity $H$ more likely to be selected, we set the relative sampling weight to
+The panel is a biased sample in which people with a higher shared viewing propensity $H$ are more likely to be selected.
+The relative sampling weight is
 
 $$
   w(H) = 0.5 + 0.4\operatorname{logit}^{-1}(1.5H)
 $$
 
-This is not each person's inclusion probability itself, but a relative weight used for sampling without replacement. The panel's marginal distributions differ from those of the population, but the change in the dependence structure is small under this setup. The design is not robust to every form of selection bias.
+This is a relative weight used for sampling without replacement, not each person's inclusion probability.
+The panel's marginal distributions differ from those of the population, while the change in its dependence structure remains small under this design.
+The setup is not robust to every form of selection bias.
 
 ```{r}
 #| label: fig-joint-usage
 #| fig-cap: >-
-#|   Weekly usage times for 5,000 people sampled from the nonnormal mixed-propensity case. The shared viewing propensity creates positive dependence between usage times for the two services.
+#|   Weekly usage times for 5,000 people sampled from the nonnormal viewing-propensity mixture.
+#|   Positive dependence between the two services induced by a shared viewing propensity.
 #| echo: false
 #| message: false
 
 set.seed(20260907)
-pop_non_normal |>
+population |>
   slice_sample(n = 5000) |>
   ggplot(aes(x = x, y = y)) +
   geom_point(alpha = 0.2, size = 0.7, color = "darkslategray") +
@@ -312,32 +385,38 @@ pop_non_normal |>
   theme_classic(base_family = "ubuntu", base_size = 13)
 ```
 
-### Comparing Estimation Methods
+### Comparison of estimation methods
 
-Using the same panel samples, we compare the following five quantities.
+Five quantities are compared using the same panel samples.
 
-1. A direct population calculation, which is the simulation truth.
-2. An estimate assuming independence and using the large-scale marginal distributions.
-3. A direct calculation from the panel of 1,000 people.
+1. Direct aggregation over the population, which is the simulation truth.
+2. An independence estimate using the large-scale marginal distributions.
+3. Direct aggregation over the panel of 1,000 people.
 4. Gaussian copula fusion using the large-scale marginal distributions and within-panel ranks.
-5. A Gaussian approximation with $\rho$ estimated from the full population. This is a reference value for diagnosing model error and is unavailable in practice because it uses information from the entire population.
+5. A Gaussian approximation with $\rho$ estimated from the full population.
+   This diagnostic benchmark isolates model error but is unavailable in practice because it uses population-level joint information.
 
-Heavy-user thresholds are set at 3, 5, and 10 hours per week, while light users are defined as those using a service for less than one hour per week. We evaluate three metrics.
+Heavy-user thresholds are set at 3, 5, and 10 hours per week, while a light user is defined as someone with less than one hour per week.
+Three probabilities are evaluated.
 
 - Both heavy: $P(X \geq h,Y \geq h)$
 - A heavy and B light: $P(X \geq h,Y < 1)$
 - A light and B heavy: $P(X < 1,Y \geq h)$
 
-Holding the population fixed, we repeat panel sampling 100 times and calculate the truth, mean estimate, bias, standard deviation, and RMSE. Errors are measured in percentage points (pp).
+Holding the population fixed, panel sampling is repeated 100 times.
+The evaluation reports the truth, mean estimate, bias, standard deviation, and root mean squared error (RMSE).
+Error metrics are expressed in percentage points (pp).
 
-## Results for the Mixed-Propensity Case
+## Results for the viewing-propensity mixture
 
-We begin with the case closest to practice, featuring mild nonnormality and biased panel sampling. @tbl-main-results reports the results when heavy use is defined as at least five hours per week.
+The analysis begins with the most practice-oriented scenario, which combines mild nonnormality with biased panel sampling.
+@tbl-main-results reports results for a heavy-user threshold of five hours per week.
 
 ```{r}
 #| label: tbl-main-results
 #| tbl-cap: >-
-#|   Estimation performance in the nonnormal mixed-propensity case with a biased panel and a five-hour heavy-user threshold. Bias, standard deviation, and RMSE are measured in pp.
+#|   Estimation performance for the viewing-propensity mixture, biased panel, and five-hour heavy-user threshold.
+#|   Bias, standard deviation, and RMSE in pp.
 #| echo: false
 #| message: false
 
@@ -348,15 +427,13 @@ metric_labels <- c(
 )
 
 method_labels <- c(
-  independence = "Independence",
+  independence = "Independence assumption",
   direct = "Direct panel estimate",
   fusion = "Gaussian copula fusion"
 )
 
 simulation_summary |>
   filter(
-    scenario == "non-normal",
-    selection == "biased",
     heavy == 5,
     method %in% names(method_labels)
   ) |>
@@ -382,21 +459,22 @@ simulation_summary |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-For the both-heavy metric, the independence assumption has a large error because it ignores the positive dependence created by the shared viewing propensity. Copula fusion, meanwhile, has a lower RMSE than the direct panel estimate.
+For the both-heavy outcome, the independence assumption produces a large error because it ignores the positive dependence induced by the shared viewing propensity.
+Gaussian copula fusion, by contrast, has lower RMSE than direct panel aggregation.
 
-For both A-heavy/B-light and A-light/B-heavy, copula fusion also has a lower RMSE than direct panel estimation. Using marginal distributions from the large-scale data produces more stable estimates than directly calculating rare combinations from the small panel alone.
+The fusion estimator also has lower RMSE for the A-heavy/B-light and A-light/B-heavy outcomes.
+Using marginal distributions from large-scale data stabilizes estimation relative to counting rare combinations directly in the small panel.
 
 ```{r}
 #| label: fig-rmse
 #| fig-cap: >-
-#|   RMSE in the nonnormal mixed-propensity case with a biased panel. The light-user threshold is one hour; the horizontal axis shows the heavy-user threshold, and the vertical axis is measured in pp.
+#|   RMSE for the nonnormal viewing-propensity mixture and biased panel.
+#|   One-hour light-user threshold, heavy-user threshold on the horizontal axis, pp on the vertical axis.
 #| echo: false
 #| message: false
 
 simulation_summary |>
   filter(
-    scenario == "non-normal",
-    selection == "biased",
     method %in% c("direct", "fusion")
   ) |>
   mutate(
@@ -433,55 +511,70 @@ simulation_summary |>
   theme(legend.position = "top", strip.background = element_blank())
 ```
 
-@fig-rmse compares direct estimation and fusion across all three heavy-user thresholds. In the mixed-propensity case, fusion has a lower RMSE for every threshold and metric.
+@fig-rmse compares direct panel aggregation with fusion across all three heavy-user thresholds.
+In the viewing-propensity mixture, fusion has lower RMSE for every threshold and outcome.
 
-## Why Accuracy Improves
+## Sources of the accuracy gain
 
-The advantage of fusion is that it does not ask the panel of 1,000 people to estimate everything. In a direct panel calculation, for example, the estimate is supported only by the number of respondents in the cell “at least five hours on both A and B.” As the target group becomes rarer, the effective sample size falls and the estimate fluctuates more widely.
+The main advantage of fusion is that it does not require the panel of 1,000 people to estimate every component.
+In direct panel aggregation, for example, the estimate for at least five hours on both A and B is supported only by panelists in that cell.
+As the target combination becomes rarer, the effective sample size falls and the estimate becomes more variable.
 
-With copula fusion, the panel is used mainly to estimate a single dependence parameter, $\rho$. The proportions using each service for at least five hours or less than one hour come from the marginal distributions of 500,000 people. The panel's single-source information is thereby concentrated on estimating dependence, while large-scale data replace the sampling error and bias in its marginal distributions.
+With copula fusion, the panel is used mainly to estimate a single dependence parameter, $\rho$.
+The shares above five hours and below one hour for each service come from the marginal distributions of 500,000 people.
+The matched-person information in the panel is therefore concentrated on estimating dependence, while large-scale data replace the panel's sampling error and bias in the margins.
 
-This explanation holds only when a simple dependence model adequately approximates the usage structure. Improvement still occurs in the mixed-propensity case, where the model is approximate, because the dependence captured by the normal-score correlation changes little between the biased panel and the population.
+This account applies only when a simple dependence model approximates the usage structure sufficiently well.
+Accuracy improves even in the viewing-propensity mixture, where the Gaussian copula is approximate, because the dependence captured by the normal-score correlation changes little between the biased panel and the population.
 
-## Assumptions Required
+## Required assumptions
 
-### Transportability of Dependence from the Panel to the Population
+### Transportability of the dependence structure from panel to population
 
-If panel participation is denoted by $S = 1$, the central assumption is
+Let $S = 1$ indicate panel participation.
+The central assumption is
 
 $$
   C_{X,Y \mid S=1} \approx C_{X,Y}
 $$
 
-The relationship between the use of the two services among panel participants must be approximately the same in the population.
+The relationship between usage of the two services among panelists must be approximately the same in the population.
 
-The bias in this simulation makes frequent video viewers more likely to be selected. This shifts the panel's usage-time distributions but leaves the rank association between the services almost unchanged. The results therefore show only that fusion works when dependence is preserved despite bias in the margins.
+In this simulation, people who watch more video are more likely to be selected.
+This shifts the panel's usage-time distributions but leaves rank dependence between the services nearly unchanged.
+The results therefore support only the narrower claim that fusion works when the margins are biased but the dependence structure is preserved.
 
-For example, if people who prefer only A are more likely to join the panel while those who prefer only B are less likely, selection changes the dependence structure itself. In that case, supplying correct marginal distributions from large-scale logs will not correct a misspecified copula. A separate design is needed to assess transportability, such as estimating dependence by demographic group, using calibration weights, or comparing multiple panels.
+For example, if people who prefer only A are more likely to join the panel while those who prefer only B are less likely, selection changes the dependence structure itself.
+Supplying correct marginal distributions from large-scale logs cannot repair a misspecified copula in that case.
+Additional designs are needed to assess transportability, such as dependence estimation by covariate group, calibration weighting, or comparisons across multiple panels.
 
-### Consistency of Measurement Definitions
+### Consistency of measurement definitions
 
-The marginal data and panel must measure the same estimand.
+The marginal data and the panel must measure the same estimand.
 
-- The observation period must cover the same week.
-- Usage time must be defined consistently.
-- Person-level and device-level measurements must not be mixed.
-- Background playback and similar activity must be treated consistently.
+- The observation window is the same weekly period.
+- Usage time is defined consistently.
+- Person-level and device-level units are not mixed.
+- Background playback and similar events are handled consistently.
 
-A copula handles dependence, not measurement error or mismatched estimands. Combining data that measure different things does not resolve those inconsistencies.
+A copula addresses dependence, not measurement error or a mismatch in estimands.
+Combining datasets that measure different constructs does not resolve that inconsistency.
 
-### Adequacy of a Gaussian Copula Approximation
+### Adequacy of the Gaussian copula approximation
 
-Because a Gaussian copula represents dependence with a single correlation, it is convenient as a baseline model and readily extends to a correlation matrix for multiple media. It cannot, however, represent every dependence structure.
+A Gaussian copula represents dependence through a single correlation parameter.
+It is convenient as a baseline model and extends naturally to a correlation matrix for multiple platforms, but it cannot represent every dependence structure.
 
-For example, when heterogeneous groups such as “light on both,” “heavy on both,” “A-oriented,” and “B-oriented” coexist, local overlap patterns may differ even at the same correlation. A Gaussian copula also has no asymptotic tail dependence, so a t-copula or another alternative may be appropriate when extreme outcomes matter, such as the probability that the top 1% of users overlap across both media.
+If heterogeneous groups such as both light, both heavy, A-focused, and B-focused users coexist, the local overlap structure can differ even under the same overall correlation.
+A Gaussian copula also has no asymptotic tail dependence.
+If extreme outcomes matter, such as the probability that the top 1% of users overlap across both services, a t copula may be a better candidate.
 
-For the conventional segment thresholds of 3, 5, and 10 hours per week used here, we take the Gaussian copula as the baseline model. Model selection should consider not only overall fit but also how well a model reproduces the overlap metrics that will ultimately be used within the panel.
+For the ordinary segment thresholds of 3, 5, and 10 hours per week in this article, the Gaussian copula serves as the baseline model.
+Model selection should consider not only overall fit but also how well each candidate reproduces the overlap metrics that will ultimately be used.
 
-## Handling Zero Usage in Real Data
+## Zero usage in real-world data
 
-For clarity, the simulation treats usage time as a positive continuous quantity. Real weekly data contain many users who did not use a service at all, so $P(X = 0) > 0$ and $P(Y = 0) > 0$. This creates many tied ranks, making it inappropriate to apply a rank transformation that assumes a continuous distribution without modification.
-
-In practice, a natural structure is to model use versus nonuse first and then positive usage time among users. The model can be extended to estimate the joint probabilities of use and nonuse separately from dependence in positive usage times. The discrete component, including outcomes such as “uses neither” and “uses only A,” then becomes an explicit estimation target.
-
-Although such extensions are necessary, the basic idea remains unchanged: obtain the marginal distributions from large-scale data and the dependence structure between the services' usage times from a small panel. The key is to verify that the dependence observed in the panel can be transported to the population. When that condition holds, audience overlap and complementarity across media can be estimated even when individual-level logs cannot be linked directly.
+Real weekly data often contain many zero-hour observations from nonusers, creating extensive rank ties.
+A rank transformation that assumes continuous distributions should not be applied unchanged.
+Instead, usage incidence and positive usage time among users should be estimated separately.
+The former captures discrete outcomes such as neither service and A only, while the latter models dependence between positive usage times.
