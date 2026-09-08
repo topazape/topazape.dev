@@ -1,7 +1,5 @@
 ---
 title: "負の二項分布の有限混合モデルによる広告フリークエンシー分布のモデリング"
-draft: true
-draft-mode: unlinked
 date: "2026-09-09"
 categories: ["audience-modeling", "reach-frequency", "statistics"]
 ---
