@@ -494,7 +494,7 @@ dependencies = [
 [[packages]]
 name = "countreg"
 version = "0.3-0"
-source = { repository = "http://r-forge.r-project.org/" }
+source = { repository = "https://r-forge.r-project.org/" }
 force_source = false
 dependencies = [
     "MASS",
