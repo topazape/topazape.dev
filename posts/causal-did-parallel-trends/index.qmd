@@ -1,9 +1,10 @@
 ---
-title: "Estimating the Effect with Difference-in-Differences (DiD)"
+title: >-
+  Estimating the Effect with Difference-in-Differences (DiD)
 draft: true
 draft-mode: unlinked
 date: "2026-10-14"
-categories: ["causal-inference", "statistics"]
+categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
 ```{r}

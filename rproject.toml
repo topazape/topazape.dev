@@ -7,7 +7,8 @@ r_version = "4.6"
 # Example: { alias = "PPM", url = "https://packagemanager.posit.co/cran/latest" },
 repositories = [
   { alias = "PPM", url = "https://packagemanager.posit.co/cran/latest" },
-  { alias = "R-Forge", url = "http://r-forge.r-project.org/" },
+  { alias = "CRAN", url = "https://cloud.r-project.org" },
+  { alias = "R-Forge", url = "https://r-forge.r-project.org/" },
 ]
 
 # A list of packages to install and any additional configuration
@@ -20,11 +21,18 @@ dependencies = [
   "languageserver",
   "gt",
   "katex",
-  "glmmTMB",
+  { name = "distributions3", repository = "CRAN" },
   "flexmix",
   "countreg",
   "slider",
-    "gtsummary",
-    "broom.helpers",
-    "tidysynth",
+  "gtsummary",
+  "broom.helpers",
+  "tidysynth",
+  { name = "TMB", repository = "CRAN" },
+  "glmmTMB",
+  "copula",
+  { name = "Boom", force_source = true },
+  { name = "BoomSpikeSlab", force_source = true },
+  { name = "bsts", force_source = true },
+  "CausalImpact",
 ]

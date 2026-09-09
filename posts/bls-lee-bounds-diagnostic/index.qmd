@@ -1,5 +1,9 @@
 ---
 title: "Differential Attrition in Brand Lift: Diagnosing Selection Bias with Lee Bounds"
+description: >-
+  Diagnose selection bias from differential survey response in Brand Lift
+  studies using Lee bounds, with binary-outcome examples and reusable R code.
+image: index_files/figure-html/fig-bounds-vs-p-1.png
 date: "2026-08-26"
 categories: ["brand-lift", "statistics", "causal-inference"]
 ---

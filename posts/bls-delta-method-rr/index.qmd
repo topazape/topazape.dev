@@ -1,5 +1,9 @@
 ---
 title: "Confidence Intervals for Brand Lift: The Delta Method on Risk Ratios"
+description: >-
+  Derive a confidence interval for Brand Lift risk ratios with the log-scale
+  delta method, including worked examples and production-ready R and BigQuery SQL.
+image: index_files/figure-html/fig-ci-comparison-1.png
 date: "2026-07-01"
 categories: ["brand-lift", "statistics"]
 ---
