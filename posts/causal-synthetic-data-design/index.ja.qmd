@@ -2,8 +2,8 @@
 title: "前後比較の限界から始める合成データの設計"
 draft: true
 draft-mode: unlinked
-date: "2026-10-14"
-categories: ["causal-inference", "statistics"]
+date: "2026-10-07"
+categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
 ```{r}
