@@ -4,8 +4,8 @@ title: >-
 subtitle: "A Synthetic Panel with Known Ground Truth"
 draft: true
 draft-mode: unlinked
-date: "2026-10-14"
-categories: ["causal-inference", "statistics"]
+date: "2026-10-07"
+categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
 ```{r}
