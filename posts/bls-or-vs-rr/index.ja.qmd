@@ -1,5 +1,6 @@
 ---
 title: "リスク比からオッズ比へ: ブランドリフトにおける統合スケールの選択"
+image: index_files/figure-html/fig-pooled-ci-1.png
 date: "2026-08-12"
 categories: ["brand-lift", "statistics", "meta-analysis"]
 ---

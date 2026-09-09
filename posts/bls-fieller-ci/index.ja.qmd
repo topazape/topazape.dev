@@ -1,5 +1,6 @@
 ---
 title: "リスク比に対する Fieller の信頼区間: Taylor 近似を使わない区間推定"
+image: index_files/figure-html/fig-ci-comparison-1.png
 date: "2026-07-29"
 categories: ["brand-lift", "statistics"]
 ---

@@ -1,5 +1,6 @@
 ---
 title: "ブランドリフトにおける差異的脱落: Lee bounds による選択バイアスの診断"
+image: index_files/figure-html/fig-bounds-vs-p-1.png
 date: "2026-08-26"
 categories: ["brand-lift", "statistics", "causal-inference"]
 ---

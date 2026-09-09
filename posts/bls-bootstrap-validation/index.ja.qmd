@@ -1,5 +1,6 @@
 ---
 title: "デルタ法による CI の被覆確率: ブートストラップ検証とサンプルサイズ設計"
+image: index_files/figure-html/fig-coverage-1.png
 date: "2026-07-15"
 categories: ["brand-lift", "statistics"]
 ---
