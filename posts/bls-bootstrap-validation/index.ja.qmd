@@ -1,6 +1,5 @@
 ---
 title: "デルタ法による CI の被覆確率: ブートストラップ検証とサンプルサイズ設計"
-image: index_files/figure-html/fig-coverage-1.png
 date: "2026-07-15"
 categories: ["brand-lift", "statistics"]
 ---
@@ -8,12 +7,15 @@ categories: ["brand-lift", "statistics"]
 ```{r}
 #| label: setup
 #| include: false
+
 library(tidyverse)
 ```
 
 [リスク比へのデルタ法](/posts/bls-delta-method-rr/)では、リスク比（risk ratio; 以後 RR） $RR = \frac{p_1}{p_0}$ に対して、対数変換とデルタ法による次の CI を導出しました。
 
-$$\left( \widehat{RR} \cdot e^{-z_{1-\alpha/2} \cdot SE}, \quad \widehat{RR} \cdot e^{+z_{1-\alpha/2} \cdot SE} \right)$$
+$$
+  \left( \widehat{RR} \cdot e^{-z_{1-\alpha/2} \cdot SE}, \quad \widehat{RR} \cdot e^{+z_{1-\alpha/2} \cdot SE} \right)
+$$
 
 ここで $SE = \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$ です。
 
@@ -31,9 +33,9 @@ $$\left( \widehat{RR} \cdot e^{-z_{1-\alpha/2} \cdot SE}, \quad \widehat{RR} \cd
 
 観測度数 $(x_1, n, x_0, n)$ に対する手順は次のとおりです。
 
-1.  $\hat{p}_1 = \frac{x_1}{n}$ と $\hat{p}_0 = \frac{x_0}{n}$ を計算します。
-2.  $b = 1, \dots, B$ について $x_1^* \sim \text{Binomial}(n, \hat{p}_1)$ と $x_0^* \sim \text{Binomial}(n, \hat{p}_0)$ を独立に生成し、$\widehat{RR}^*_b = (x_1^*/n) / (x_0^*/n)$ を計算します。ただし $x_0^* = 0$ では $\widehat{RR}^*$ が定義できず、後述の被覆シミュレーションでも観測度数のどちらかが $0$ の反復を除外するので、$x_0^* = 0$ または $x_1^* = 0$ となった複製は同じように破棄します。
-3.  $(1-\alpha)$ の CI は $\left( \widehat{RR}^*_{(\alpha/2)}, \; \widehat{RR}^*_{(1-\alpha/2)} \right)$ です。
+1. $\hat{p}_1 = \frac{x_1}{n}$ と $\hat{p}_0 = \frac{x_0}{n}$ を計算します。
+2. $b = 1, \dots, B$ について $x_1^* \sim \text{Binomial}(n, \hat{p}_1)$ と $x_0^* \sim \text{Binomial}(n, \hat{p}_0)$ を独立に生成し、$\widehat{RR}^*_b = (x_1^*/n) / (x_0^*/n)$ を計算します。ただし $x_0^* = 0$ では $\widehat{RR}^*$ が定義できず、後述の被覆シミュレーションでも観測度数のどちらかが $0$ の反復を除外するので、$x_0^* = 0$ または $x_1^* = 0$ となった複製は同じように破棄します。
+3. $(1 - \alpha)$ の CI は $\left( \widehat{RR}^*_{(\alpha/2)}, \; \widehat{RR}^*_{(1-\alpha/2)} \right)$ です。
 
 ## 被覆確率のシミュレーション
 
@@ -55,22 +57,22 @@ $n_1 = n_0 = n$ かつ $RR > 1$ なら $p_1 = RR \cdot p_0 > p_0$ なので、�
 
 鍵になる量は $\mathbb{E}[x_0] = n \cdot p_0$ です。これがある範囲に散らばるよう、$p_0$ と $n$ の両方を動かします。
 
-| パラメータ           | 値                                      |
-|----------------------|-----------------------------------------|
-| $RR$                 | $1.20$（主要）、$1.50$（確認）          |
-| $p_0$                | $0.02, \; 0.05, \; 0.10, \; 0.20$       |
-| $n \; (= n_1 = n_0)$ | $100, \; 500, \; 2{,}000$               |
-| 反復回数             | $K = 10{,}000$                          |
-| 信頼水準             | $95\%$                                  |
+  | パラメータ            | 値                                |
+  | --------------------- | --------------------------------- |
+  | $RR$                  | $1.20$（主要）、$1.50$（確認）    |
+  | $p_0$                 | $0.02, \; 0.05, \; 0.10, \; 0.20$ |
+  | $n \; ( = n_1 = n_0)$ | $100, \; 500, \; 2{,}000$         |
+  | 反復回数              | $K = 10{,}000$                    |
+  | 信頼水準              | $95\%$                            |
 
 4 つの $p_0$ は、BLS のベースライン率の範囲を半 log 刻みで覆う値です。3 つの $n$ と組み合わせると 12 条件になり、$\mathbb{E}[x_0]$ は 2 から 400 まで 10 通りの値を取ります。
 
-|              | $n = 100$ | $n = 500$ | $n = 2{,}000$ |
-|--------------|-----------|-----------|---------------|
-| $p_0 = 0.02$ | 2         | 10        | 40            |
-| $p_0 = 0.05$ | 5         | 25        | 100           |
-| $p_0 = 0.10$ | 10        | 50        | 200           |
-| $p_0 = 0.20$ | 20        | 100       | 400           |
+  |              | $n = 100$ | $n = 500$ | $n = 2{,}000$ |
+  | ------------ | --------- | --------- | ------------- |
+  | $p_0 = 0.02$ | 2         | 10        | 40            |
+  | $p_0 = 0.05$ | 5         | 25        | 100           |
+  | $p_0 = 0.10$ | 10        | 50        | 200           |
+  | $p_0 = 0.20$ | 20        | 100       | 400           |
 
 このうち $(0.02,\, 500)$ と $(0.10,\, 100)$ は $\mathbb{E}[x_0] = 10$ で、$(0.05,\, 2{,}000)$ と $(0.20,\, 500)$ は $\mathbb{E}[x_0] = 100$ で一致しています。被覆確率が $\mathbb{E}[x_0]$ だけで決まるかどうかは、この 2 組を比べれば確認できます。
 
@@ -96,45 +98,45 @@ bls_bootstrap_ci <- function(x1, n1, x0, n0, B = 5000, alpha = 0.05) {
   p0_hat <- x0 / n0
   x1_star <- rbinom(B, n1, p1_hat)
   x0_star <- rbinom(B, n0, p0_hat)
-  
+
   valid <- x0_star > 0 & x1_star > 0
   if (sum(valid) < 100) {
     return(c(NA, NA))
   }
-  
+
   rr_star <- (x1_star[valid] / n1) / (x0_star[valid] / n0)
-  
+
   quantile(rr_star, c(alpha / 2, 1 - alpha / 2), names = FALSE)
 }
 
 coverage_sim <- function(p0, rr, n, K = 10000, B = 5000, alpha = 0.05) {
   p1 <- rr * p0
   true_rr <- rr
-  
+
   dm_cover <- 0L
   bs_cover <- 0L
   valid_dm <- 0L
   valid_bs <- 0L
-  
+
   for (k in seq_len(K)) {
     x1 <- rbinom(1, n, p1)
     x0 <- rbinom(1, n, p0)
-    
+
     if (x1 == 0 || x0 == 0) {
       next
     }
-    
+
     dm_ci <- bls_rr_ci(x1, n, x0, n, alpha)
     valid_dm <- valid_dm + 1L
     dm_cover <- dm_cover + (dm_ci[1] <= true_rr & true_rr <= dm_ci[2])
-    
+
     bs_ci <- bls_bootstrap_ci(x1, n, x0, n, B, alpha)
     if (!anyNA(bs_ci)) {
       valid_bs <- valid_bs + 1L
       bs_cover <- bs_cover + (bs_ci[1] <= true_rr & true_rr <= bs_ci[2])
     }
   }
-  
+
   tibble(
     p0 = p0,
     rr = rr,
@@ -183,7 +185,7 @@ results |>
   gt::fmt_percent(columns = c(dm_coverage, bs_coverage), decimals = 1) |>
   gt::cols_label(
     p0 = gt::md("$p_0$"),
-    n  = gt::md("$n$"),
+    n = gt::md("$n$"),
     rr = gt::md("$RR$"),
     ex0 = gt::md("$\\mathbb{E}[x_0]$"),
     dm_coverage = "Delta method",
@@ -209,7 +211,8 @@ ggplot(cov_long, aes(x = ex0, y = coverage, color = method, shape = method)) +
   geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
   geom_point(size = 2.5) +
   geom_line(
-    data = cov_long |> summarise(coverage = mean(coverage), .by = c(ex0, method)),
+    data = cov_long |>
+      summarise(coverage = mean(coverage), .by = c(ex0, method)),
     aes(x = ex0, y = coverage)
   ) +
   scale_x_log10(breaks = c(2, 5, 10, 20, 50, 100, 200, 400)) +
@@ -242,38 +245,50 @@ $\mathbb{E}[x_0]$ だけで決まるという点も同様です。$\mathbb{E}[x_
 
 リフトが検出されるのは CI の下限が $1$ を超えるときで、対数スケールでは次の条件になります。
 
-$$\log(\widehat{RR}) - z_{1-\alpha/2} \cdot SE > 0$$
+$$
+  \log(\widehat{RR}) - z_{1-\alpha/2} \cdot SE > 0
+$$
 
 真の $RR$ の下で $\log(\widehat{RR})$ は近似的に $N(\log(RR), \; SE^2)$ に従うので、検出力は検出される確率として書けます。
 
-$$\text{Power} = P\!\left(\log(\widehat{RR}) > z_{1-\alpha/2} \cdot SE\right) = \Phi\!\left(\frac{\log(RR)}{SE} - z_{1-\alpha/2}\right)$$
+$$
+  \text{Power} = P\!\left( \log(\widehat{RR}) > z_{1-\alpha/2} \cdot SE \right)
+               = \Phi\!\left( \frac{\log(RR)}{SE} - z_{1-\alpha/2} \right)
+$$
 
 検出力を $1 - \beta$ とおいて解くと
 
-$$\frac{\log(RR)}{SE} = z_{1-\alpha/2} + z_{1-\beta}$$
+$$
+  \frac{\log(RR)}{SE} = z_{1-\alpha/2} + z_{1-\beta}
+$$
 
 が得られます。
 
-
 ### $n_{\min}$ の導出
 
-$n_1 = n_0 = n$ として、$\log(RR) = (z_{1-\alpha/2} + z_{1-\beta}) \cdot SE$ と $SE^2 = \frac{1-p_1}{n\,p_1} + \frac{1-p_0}{n\,p_0}$ から $n$ について解きます。
+$n_1 = n_0 = n$ として、$\log(RR) = (z_{1-\alpha/2} + z_{1-\beta}) \cdot SE$ と $SE^2 = \frac{1 - p_1}{n\,p_1} + \frac{1 - p_0}{n\,p_0}$ から $n$ について解きます。
 
-$$n_{\min} = \left\lceil \frac{(z_{1-\alpha/2} + z_{1-\beta})^2}{[\log(RR)]^2}\left[\frac{1-p_1}{p_1} + \frac{1-p_0}{p_0}\right] \right\rceil$$
+$$
+  n_{\min}
+  = \left\lceil \frac{(z_{1-\alpha/2} + z_{1-\beta})^2}{[\log(RR)]^2}\left[ \frac{1 - p_1}{p_1} + \frac{1 - p_0}{p_0} \right] \right\rceil
+$$
 
-$p_1 = RR \cdot p_0$ なので、必要な入力は $p_0$、$RR$、$\alpha$、検出力 $(1-\beta)$ の 4 つです。
-
+$p_1 = RR \cdot p_0$ なので、必要な入力は $p_0$、$RR$、$\alpha$、検出力 $(1 - \beta)$ の 4 つです。
 
 ### 数値例
 
 過去の調査の水準から $p_0 = 0.10$、$RR = 1.20$（相対リフト 20%）を設計値に取り、$\alpha = 0.05$ で検出力 80% を目標とします。このとき $p_1 = 0.12$、$z_{0.975} = 1.96$、$z_{0.80} = 0.842$ なので、
 
-$$n_{\min} = \left\lceil \frac{(1.96 + 0.842)^2}{[\log(1.20)]^2}\left[\frac{1-0.12}{0.12} + \frac{1-0.10}{0.10}\right] \right\rceil = \left\lceil \frac{7.849}{0.03324} \times 16.333 \right\rceil = \left\lceil 236.1 \times 16.333 \right\rceil = 3{,}857$$
+$$
+  n_{\min}
+  = \left\lceil \frac{(1.96 + 0.842)^2}{[\log(1.20)]^2}\left[ \frac{1 - 0.12}{0.12} + \frac{1 - 0.10}{0.10} \right] \right\rceil
+           = \left\lceil \frac{7.849}{0.03324} \times 16.333 \right\rceil
+           = \left\lceil 236.1 \times 16.333 \right\rceil = 3{,}857
+$$
 
 となります。相対リフト 20% を検出力 80% で検出するには、1 群あたり 3,900 人程度の回答者が必要ということです。
 
 $p_0$ と $RR$ は設計時の仮定で、通常は過去の水準から置きます。実際の値がここから外れれば、実現する検出力も変わります。
-
 
 ### $n_{\min}$ の参照表
 
@@ -286,8 +301,7 @@ bls_nmin <- function(p0, rr, alpha = 0.05, power = 0.80) {
   z_alpha <- qnorm(1 - alpha / 2)
   z_beta <- qnorm(power)
   ceiling(
-    (z_alpha + z_beta)^2 / log(rr)^2
-    * ((1 - p1) / p1 + (1 - p0) / p0)
+    (z_alpha + z_beta)^2 / log(rr)^2 * ((1 - p1) / p1 + (1 - p0) / p0)
   )
 }
 ```
@@ -318,16 +332,15 @@ nmin_grid |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-
 ## R コード
 
-``` r
+```r
 bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
   p1 <- x1 / n1
   p0 <- x0 / n0
   rr <- p1 / p0
 
-  se_log <- sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  se_log <- sqrt(1 / x1 - 1 / n1 + 1 / x0 - 1 / n0)
   z <- qnorm(1 - alpha / 2)
   exp(log(rr) + c(-1, 1) * z * se_log)
 }
@@ -349,8 +362,7 @@ bls_nmin <- function(p0, rr, alpha = 0.05, power = 0.80) {
   z_alpha <- qnorm(1 - alpha / 2)
   z_beta <- qnorm(power)
   ceiling(
-    (z_alpha + z_beta)^2 / log(rr)^2
-    * ((1 - p1) / p1 + (1 - p0) / p0)
+    (z_alpha + z_beta)^2 / log(rr)^2 * ((1 - p1) / p1 + (1 - p0) / p0)
   )
 }
 

@@ -1,6 +1,5 @@
 ---
 title: "ブランドリフトの信頼区間: リスク比へのデルタ法"
-image: index_files/figure-html/fig-ci-comparison-1.png
 date: "2026-07-01"
 categories: ["brand-lift", "statistics"]
 ---
@@ -17,22 +16,29 @@ $RR$ に対して適切な CI を構成することが難しいのは、標本�
 
 BLS のキャンペーンから得られるデータは、次の 2×2 表の形にまとめられます。
 
-|        | 肯定  | 否定        | 合計  |
-|--------|-------|-------------|-------|
-| 曝露群 | $x_1$ | $n_1 - x_1$ | $n_1$ |
-| 対照群 | $x_0$ | $n_0 - x_0$ | $n_0$ |
+  |        | 肯定  | 否定        | 合計  |
+  | ------ | ----- | ----------- | ----- |
+  | 曝露群 | $x_1$ | $n_1 - x_1$ | $n_1$ |
+  | 対照群 | $x_0$ | $n_0 - x_0$ | $n_0$ |
 
 肯定回答率は
 
-$$\hat{p}_1 = \frac{x_1}{n_1}, \quad \hat{p}_0 = \frac{x_0}{n_0}$$
+$$
+  \hat{p}_1 = \frac{x_1}{n_1}, \quad \hat{p}_0 = \frac{x_0}{n_0}
+$$
 
 であり、リスク比は
 
-$$\widehat{RR} = \frac{\hat{p}_1}{\hat{p}_0}$$
+$$
+  \widehat{RR} = \frac{\hat{p}_1}{\hat{p}_0}
+$$
 
 です。$\hat{p}_1$ と $\hat{p}_0$ はいずれも二項分布から得られる標本比率なので、その分散は次のようになります。
 
-$$\text{Var}(\hat{p}_1) = \frac{p_1(1 - p_1)}{n_1}, \quad \text{Var}(\hat{p}_0) = \frac{p_0(1 - p_0)}{n_0}$$
+$$
+  \text{Var}(\hat{p}_1) = \frac{p_1(1 - p_1)}{n_1}, \quad \text{Var}(\hat{p}_0)
+                        = \frac{p_0(1 - p_0)}{n_0}
+$$
 
 曝露群と対照群は独立に無作為化されているため、$\hat{p}_1$ と $\hat{p}_0$ も独立です。
 
@@ -40,45 +46,80 @@ $$\text{Var}(\hat{p}_1) = \frac{p_1(1 - p_1)}{n_1}, \quad \text{Var}(\hat{p}_0) 
 
 デルタ法は、$\hat{\theta}$ が $\theta$ の漸近正規な推定量であるとき、微分可能な関数 $g$ について
 
-$$\text{Var}(g(\hat{\theta})) \approx \left[ g'(\theta) \right]^2 \text{Var}(\hat{\theta})$$
+$$
+  \text{Var}(g(\hat{\theta}))
+  \approx \left[ g'(\theta) \right]^2 \text{Var}(\hat{\theta})
+$$
 
 が成り立つことを述べています。これは、$g$ を $\theta$ の周りで 1 次の Taylor 展開した
 
-$$g(\hat{\theta}) \approx g(\theta) + g'(\theta)(\hat{\theta} - \theta)$$
+$$
+  g(\hat{\theta}) \approx g(\theta) + g'(\theta)(\hat{\theta} - \theta)
+$$
 
 から得られます。右辺の第 1 項は定数なので、右辺の分散は $[g'(\theta)]^2 \, \text{Var}(\hat{\theta})$ になります。
 
 2 変数関数 $g(p_1, p_0) = \frac{p_1}{p_0}$ でも同じ議論が使えます。$(p_1, p_0)$ の周りでの 1 次の Taylor 展開は
 
-$$g(\hat{p}_1, \hat{p}_0) \approx g(p_1, p_0) + \frac{\partial g}{\partial p_1}(\hat{p}_1 - p_1) + \frac{\partial g}{\partial p_0}(\hat{p}_0 - p_0)$$
+$$
+  g(\hat{p}_1, \hat{p}_0)
+  \approx g(p_1, p_0) + \frac{\partial g}{\partial p_1}(\hat{p}_1 - p_1)
+                                  + \frac{\partial g}{\partial p_0}(\hat{p}_0 - p_0)
+$$
 
 です。ここから定数 $g(p_1, p_0)$ を除いた部分は、$a = \frac{\partial g}{\partial p_1}$、$b = \frac{\partial g}{\partial p_0}$、$U = \hat{p}_1 - p_1$、$V = \hat{p}_0 - p_0$ とおけば線形結合 $aU + bV$ にほかなりません。線形結合の分散は
 
-$$\text{Var}(aU + bV) = a^2 \text{Var}(U) + b^2 \text{Var}(V) + 2ab\,\text{Cov}(U, V)$$
+$$
+  \text{Var}(aU + bV) = a^2 \text{Var}(U) + b^2 \text{Var}(V)
+                        + 2ab\,\text{Cov}(U, V)
+$$
 
 なので、
 
-$$\text{Var}(\widehat{RR}) \approx \left(\frac{\partial g}{\partial p_1}\right)^2 \text{Var}(\hat{p}_1) + \left(\frac{\partial g}{\partial p_0}\right)^2 \text{Var}(\hat{p}_0) + 2 \frac{\partial g}{\partial p_1} \frac{\partial g}{\partial p_0} \text{Cov}(\hat{p}_1, \hat{p}_0)$$
+$$
+  \text{Var}(\widehat{RR})
+  \approx \left( \frac{\partial g}{\partial p_1} \right)^2 \text{Var}(\hat{p}_1)
+                                   + \left( \frac{\partial g}{\partial p_0} \right)^2 \text{Var}(\hat{p}_0)
+                                   + 2 \frac{\partial g}{\partial p_1} \frac{\partial g}{\partial p_0} \text{Cov}(\hat{p}_1, \hat{p}_0)
+$$
 
 が得られます。$\hat{p}_1$ と $\hat{p}_0$ は独立なので $\text{Cov}(\hat{p}_1, \hat{p}_0) = 0$ となり、交差項は落ちます。
 
-$$\text{Var}(\widehat{RR}) \approx \left(\frac{\partial g}{\partial p_1}\right)^2 \text{Var}(\hat{p}_1) + \left(\frac{\partial g}{\partial p_0}\right)^2 \text{Var}(\hat{p}_0)$$
+$$
+  \text{Var}(\widehat{RR})
+  \approx \left( \frac{\partial g}{\partial p_1} \right)^2 \text{Var}(\hat{p}_1)
+                                   + \left( \frac{\partial g}{\partial p_0} \right)^2 \text{Var}(\hat{p}_0)
+$$
 
 偏微分は
 
-$$\frac{\partial}{\partial p_1}\left(\frac{p_1}{p_0}\right) = \frac{1}{p_0}, \quad \frac{\partial}{\partial p_0}\left(\frac{p_1}{p_0}\right) = -\frac{p_1}{p_0^2}$$
+$$
+  \frac{\partial}{\partial p_1}\left( \frac{p_1}{p_0} \right)
+  = \frac{1}{p_0}, \quad \frac{\partial}{\partial p_0}\left( \frac{p_1}{p_0} \right)
+                                                              = -\frac{p_1}{p_0^2}
+$$
 
 なので、これを代入すると
 
-$$\text{Var}(\widehat{RR}) \approx \frac{1}{p_0^2} \cdot \frac{p_1(1-p_1)}{n_1} + \frac{p_1^2}{p_0^4} \cdot \frac{p_0(1-p_0)}{n_0}$$
+$$
+  \text{Var}(\widehat{RR}) \approx \frac{1}{p_0^2}
+                                   \cdot \frac{p_1(1 - p_1)}{n_1}
+                                   + \frac{p_1^2}{p_0^4}
+                                   \cdot \frac{p_0(1 - p_0)}{n_0}
+$$
 
 となり、整理すれば次の形になります。
 
-$$\text{Var}(\widehat{RR}) \approx RR^2 \left[ \frac{1-p_1}{n_1 p_1} + \frac{1-p_0}{n_0 p_0} \right]$$
+$$
+  \text{Var}(\widehat{RR})
+  \approx RR^2 \left[ \frac{1 - p_1}{n_1 p_1} + \frac{1 - p_0}{n_0 p_0} \right]
+$$
 
 中心極限定理より $\hat{p}_1$ と $\hat{p}_0$ は漸近正規で、デルタ法は漸近正規性を保つので $\widehat{RR}$ も漸近正規です。したがって、標準的な Wald 区間
 
-$$\widehat{RR} \pm 1.96 \times \sqrt{\text{Var}(\widehat{RR})}$$
+$$
+  \widehat{RR} \pm 1.96 \times \sqrt{\text{Var}(\widehat{RR})}
+$$
 
 が使えます。
 
@@ -90,36 +131,57 @@ $$\widehat{RR} \pm 1.96 \times \sqrt{\text{Var}(\widehat{RR})}$$
 
 - 点推定値が大きいときに真の $RR$ が存在しやすい右の裾で、被覆確率が名目の水準を下回ります。
 
-
 ## log(RR) へのデルタ法
 
 $RR$ ではなく $\log(RR)$ にデルタ法を適用すると、この 2 点はどちらも解消します。$\log$ は $(0, \infty)$ を $(-\infty, \infty)$ へ写すので、対数スケールで対称な区間を作って指数変換で戻せば、元のスケールでは非対称で、決して負にならない区間が得られます。
 
 出発点は
 
-$$\log(\widehat{RR}) = \log(\hat{p}_1) - \log(\hat{p}_0)$$
+$$
+  \log(\widehat{RR}) = \log(\hat{p}_1) - \log(\hat{p}_0)
+$$
 
 です。$\hat{p}_1$ と $\hat{p}_0$ は独立なので、差の分散は分散の和になります。
 
-$$\text{Var}(\log(\widehat{RR})) = \text{Var}(\log(\hat{p}_1)) + \text{Var}(\log(\hat{p}_0))$$
+$$
+  \text{Var}(\log(\widehat{RR})) = \text{Var}(\log(\hat{p}_1))
+                                   + \text{Var}(\log(\hat{p}_0))
+$$
 
 各項には 1 変数のデルタ法をそのまま使えます。$g(p) = \log(p)$ では $g'(p) = 1/p$ なので、
 
-$$\text{Var}(\log(\hat{p}_1)) \approx \frac{1}{p_1^2} \cdot \frac{p_1(1 - p_1)}{n_1} = \frac{1 - p_1}{n_1 \, p_1}$$
+$$
+  \text{Var}(\log(\hat{p}_1)) \approx \frac{1}{p_1^2}
+                                      \cdot \frac{p_1(1 - p_1)}{n_1}
+                              = \frac{1 - p_1}{n_1 \, p_1}
+$$
 
-$$\text{Var}(\log(\hat{p}_0)) \approx \frac{1}{p_0^2} \cdot \frac{p_0(1 - p_0)}{n_0} = \frac{1 - p_0}{n_0 \, p_0}$$
+$$
+  \text{Var}(\log(\hat{p}_0)) \approx \frac{1}{p_0^2}
+                                      \cdot \frac{p_0(1 - p_0)}{n_0}
+                              = \frac{1 - p_0}{n_0 \, p_0}
+$$
 
 となり、
 
-$$\text{Var}(\log(\widehat{RR})) \approx \frac{1 - p_1}{n_1 \, p_1} + \frac{1 - p_0}{n_0 \, p_0}$$
+$$
+  \text{Var}(\log(\widehat{RR})) \approx \frac{1 - p_1}{n_1 \, p_1}
+                                         + \frac{1 - p_0}{n_0 \, p_0}
+$$
 
 が得られます。標本推定値 $\hat{p}_1$、$\hat{p}_0$ を代入すれば
 
-$$\text{Var}(\log(\widehat{RR})) = \frac{1 - \hat{p}_1}{n_1 \, \hat{p}_1} + \frac{1 - \hat{p}_0}{n_0 \, \hat{p}_0}$$
+$$
+  \text{Var}(\log(\widehat{RR})) = \frac{1 - \hat{p}_1}{n_1 \, \hat{p}_1}
+                                   + \frac{1 - \hat{p}_0}{n_0 \, \hat{p}_0}
+$$
 
 で、セル度数で書き直すと同じものが次の形になります。
 
-$$\text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}$$
+$$
+  \text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1}
+                                   + \frac{1}{x_0} - \frac{1}{n_0}
+$$
 
 この式は以降の導出でも繰り返し登場します。各項の出どころも明確で、$\frac{1}{x}$ は $\log(p)$ へのデルタ法から、$-\frac{1}{n}$ は総数の寄与を差し引く分から来ています。
 
@@ -127,11 +189,16 @@ $$\text{Var}(\log(\widehat{RR})) = \frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0}
 
 $\log(\hat{p}_1)$ と $\log(\hat{p}_0)$ は、漸近正規な推定量にデルタ法を適用したものなのでそれぞれ漸近正規で、その差 $\log(\widehat{RR})$ も漸近正規です。$\log(RR)$ の $(1 - \alpha)$ 信頼区間は
 
-$$\log(\widehat{RR}) \pm z_{1-\alpha/2} \times \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$$
+$$
+  \log(\widehat{RR}) \pm z_{1-\alpha/2}
+  \times \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}
+$$
 
 となり、両端を指数変換すると $RR$ の信頼区間
 
-$$\left( \widehat{RR} \cdot \exp\left(-z_{1-\alpha/2} \times SE \right), \quad \widehat{RR} \cdot \exp\left(+z_{1-\alpha/2} \times SE \right) \right)$$
+$$
+  \left( \widehat{RR} \cdot \exp\left( -z_{1-\alpha/2} \times SE \right), \quad \widehat{RR} \cdot \exp\left( +z_{1-\alpha/2} \times SE \right) \right)
+$$
 
 が得られます。ここで $SE = \sqrt{\frac{1}{x_1} - \frac{1}{n_1} + \frac{1}{x_0} - \frac{1}{n_0}}$ です。
 
@@ -153,42 +220,62 @@ $$\left( \widehat{RR} \cdot \exp\left(-z_{1-\alpha/2} \times SE \right), \quad \
 
 BLS のキャンペーンから次のデータが得られたとします。
 
-|        | 肯定 | 否定 | 合計 |
-|--------|------|------|------|
-| 曝露群 | 105  | 395  | 500  |
-| 対照群 | 70   | 430  | 500  |
+  |        | 肯定 | 否定 | 合計 |
+  | ------ | ---- | ---- | ---- |
+  | 曝露群 | 105  | 395  | 500  |
+  | 対照群 | 70   | 430  | 500  |
 
 このとき
 
-$$\hat{p}_1 = 0.210, \quad \hat{p}_0 = 0.140, \quad \widehat{RR} = \frac{0.210}{0.140} = 1.500$$
+$$
+  \hat{p}_1 = 0.210, \quad \hat{p}_0 = 0.140, \quad \widehat{RR}
+            = \frac{0.210}{0.140} = 1.500
+$$
 
 なので、プラットフォームは「相対リフト」50% と報告することになります。
 
 **対数変換による CI（デルタ法）**
 
-$$SE = \sqrt{\frac{1}{105} - \frac{1}{500} + \frac{1}{70} - \frac{1}{500}} = \sqrt{0.007524 + 0.012286} = \sqrt{0.019810} = 0.14075$$
+$$
+  SE = \sqrt{\frac{1}{105} - \frac{1}{500} + \frac{1}{70} - \frac{1}{500}}
+     = \sqrt{0.007524 + 0.012286} = \sqrt{0.019810} = 0.14075
+$$
 
-$$\log(\widehat{RR}) = \log(1.500) = 0.40546$$
+$$
+  \log(\widehat{RR}) = \log(1.500) = 0.40546
+$$
 
 なので、$\log(RR)$ の 95% CI は
 
-$$0.40546 \pm 1.96 \times 0.14075 = (0.12959, \; 0.68133)$$
+$$
+  0.40546 \pm 1.96 \times 0.14075 = (0.12959, \; 0.68133)
+$$
 
 となり、指数変換して $RR$ のスケールに戻すと
 
-$$(e^{0.12959}, \; e^{0.68133}) = (1.138, \; 1.977)$$
+$$
+  (e^{0.12959}, \; e^{0.68133}) = (1.138, \; 1.977)
+$$
 
 です。区間は $1$ を含まないので、リフトは 5% 水準で統計的に有意です。「相対リフト」50% の 95% CI は、およそ (13.8%, 97.7%) ということになります。
 
 **素朴な対称の CI（比較のため）**
 
-$$\text{Var}(\widehat{RR}) = 1.500^2 \times \left[\frac{1-0.210}{500 \times 0.210} + \frac{1-0.140}{500 \times 0.140}\right] = 2.25 \times (0.007524 + 0.012286) = 0.044573$$
+$$
+  \text{Var}(\widehat{RR})
+  = 1.500^2 \times \left[ \frac{1 - 0.210}{500 \times 0.210} + \frac{1 - 0.140}{500 \times 0.140} \right]
+                           = 2.25 \times (0.007524 + 0.012286) = 0.044573
+$$
 
-$$SE_{naive} = \sqrt{0.044573} = 0.21112$$
+$$
+  SE_{naive} = \sqrt{0.044573} = 0.21112
+$$
 
 なので、95% CI は
 
-$$1.500 \pm 1.96 \times 0.21112 = (1.086, \; 1.914)$$
+$$
+  1.500 \pm 1.96 \times 0.21112 = (1.086, \; 1.914)
+$$
 
 です。
 
@@ -199,12 +286,13 @@ $$1.500 \pm 1.96 \times 0.21112 = (1.086, \; 1.914)$$
 #| fig-cap: "RR の 95% 信頼区間。対数変換による非対称な区間と、素朴な対称の区間の比較。"
 #| echo: false
 #| message: false
+
 library(tidyverse)
 
 tribble(
-  ~method,              ~rr,   ~lower, ~upper,
-  "Log-transform",      1.500, 1.138,  1.977,
-  "Naive (symmetric)",  1.500, 1.086,  1.914
+  ~method             , ~rr   , ~lower , ~upper ,
+  "Log-transform"     , 1.500 , 1.138  , 1.977  ,
+  "Naive (symmetric)" , 1.500 , 1.086  , 1.914
 ) |>
   mutate(method = fct_inorder(method) |> fct_rev()) |>
   ggplot(aes(x = rr, y = method, xmin = lower, xmax = upper, color = method)) +
@@ -219,24 +307,22 @@ tribble(
   theme(legend.position = "none")
 ```
 
-
 ## 2 つの方法に差が出る場面
 
 差が最も大きくなるのは、ベースライン率 $p_0$ が低い場合です。対照群の肯定回答数が少ないと $\hat{p}_0$ が不安定になり、$\widehat{RR}$ の標本分布は正規分布ではうまく近似できなくなります。素朴な CI はこれを反映できませんが、対数変換による CI は構成上非対称なので反映できます。
 
 もっとも、対数変換による CI も漸近的な方法です。$\log(\hat{p})$ の正規近似が成り立つだけの大きさが $x_1$ と $x_0$ に必要で、対照群の期待肯定回答数 $\mathbb{E}[x_0] = n \cdot p_0$ が小さいときは SE の式の $1/x_0$ の項が支配的になり、CI は表示している信頼水準に見合わないほど広くなります。
 
-
 ## R コード
 
-``` r
+```r
 bls_rr_ci <- function(x1, n1, x0, n0, alpha = 0.05) {
   p1 <- x1 / n1
   p0 <- x0 / n0
   rr <- p1 / p0
 
   # 対数変換による CI（デルタ法）
-  se_log <- sqrt(1/x1 - 1/n1 + 1/x0 - 1/n0)
+  se_log <- sqrt(1 / x1 - 1 / n1 + 1 / x0 - 1 / n0)
   z <- qnorm(1 - alpha / 2)
   ci_log <- exp(log(rr) + c(-1, 1) * z * se_log)
 
@@ -267,7 +353,7 @@ bls_rr_ci(105, 500, 70, 500)
 
 同じ計算は SQL でも書けます。UDF は必要ありません。BLS の結果がキャンペーンごとのセル度数に集計されていれば、CI は 1 つのクエリで求まります。
 
-``` sql
+```sql
 with bls as (
   select
     study_id,
