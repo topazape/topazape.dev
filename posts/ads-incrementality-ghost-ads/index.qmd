@@ -1,0 +1,268 @@
+---
+title: "Adding Ghost Ads to an Ad-Supported Streaming Platform"
+description: >-
+  Design a Ghost Ads experiment for an AVOD platform that measures incremental conversions separately from attribution while preserving campaign-level delivery decisions.
+image: ghost-ads-design.png
+draft: true
+draft-mode: unlinked
+date: "2026-09-10"
+categories: [
+  "causal-inference",
+  "incrementality",
+  "advertising",
+  "system-design",
+]
+---
+
+Attributed conversions are often among the first metrics examined when evaluating an advertising campaign.
+They connect conversions (CVs) occurring after an impression or click to an ad interaction, making them indispensable for day-to-day campaign reporting.
+Most ad delivery platforms already provide this capability.
+
+Attributed CV alone, however, cannot tell us how many conversions the ad actually added.
+It answers a different question: how many conversions occurred after someone saw or clicked the ad?
+If a campaign reports 1,000 attributed CVs, the existing attribution rules have linked 1,000 conversions to ad interactions.
+Some of those purchases would have happened without the ad.
+
+This is why Incremental CV must be treated separately.
+It estimates the additional conversions caused by advertising by comparing a group that received the ad with a group that did not.
+An Incremental CV estimate of 320 means that the campaign is estimated to have generated 320 additional conversions.
+It does not mean that 320 specific conversions have been identified as the causal subset of the 1,000 attributed CVs.
+
+What would it take to add incrementality measurement to an existing AVOD ad delivery platform that already measures Attributed CV?
+Using Ghost Ads as the starting point, this article develops a design for measuring Incremental CV independently of Attributed CV.
+The main challenge is not an advanced estimator.
+It is deciding how to construct the control group and how to record its conversions.
+
+To make the design concrete, suppose we have a simplified, generic ad delivery platform.
+For each ad request, it can select an ad from multiple candidates.
+It has a persistent ID that exists before ad exposure, and conversions on the advertiser's website can be linked to that ID.
+The platform already measures Attributed CV, but it does not yet record experiment assignment or outcomes for the control group.
+
+## Why Attributed CV Is Not Ad Effect
+
+People who see an ad may already be more interested in the product than people who do not.
+They may use the service more frequently and therefore have more opportunities to receive ads.
+The delivery system itself may also be more likely to serve ads to people who are more likely to convert.
+
+Consequently, subtracting the Conversion Rate (CVR) of unexposed users from that of exposed users does not necessarily estimate the effect of the ad.
+The same limitation applies to attribution that counts conversions within a fixed window after an impression or click.
+It can count conversions after an ad interaction, but it cannot determine whether the ad caused them.
+
+## The Comparison Created by Ghost Ads
+
+Ghost Ads, proposed by Johnson and colleagues, identifies users in the control group who would have been exposed had they been assigned to treatment.
+The platform selects ads for the control group in the usual way and records opportunities in which the focal ad would have been selected as ghost impressions.
+The user receives a different ad selected by the delivery system instead of the focal ad.
+
+The original paper estimates the difference between exposed users and control users who would have been exposed under treatment.
+This narrows the population relative to an Intent-to-Treat (ITT) comparison of everyone assigned to the experiment, reducing dilution from unexposed users when campaign reach is low.
+The paper describes ideal Ghost Ads in terms of the Treatment on the Treated (TOT), and Predicted Ghost Ads, which predicts whether delivery would succeed, in terms of the Local Average Treatment Effect (LATE).
+[Johnson, Lewis, and Nubbemeyer (2016)](https://conference.nber.org/confer/2016/EoDs16/Johnson_Lewis_Nubbemeyer.pdf)
+
+Applying the same idea to AVOD would require more than treating all unexposed users as the control group.
+The platform would need to record the delivery opportunities in which the focal campaign would ordinarily have been selected.
+
+## The Original Design and the Proposed AVOD Design
+
+  | Dimension                                           | Ghost Ads in the original paper                                     | Proposed AVOD design                                                                                            |
+  | --------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+  | Identifying a delivery opportunity for the focal ad | A simulated auction that includes the focal ad                      | The ordinary ad selection process with the focal campaign included                                              |
+  | Ad actually served to control                       | Winner of the real auction, which excludes the focal ad             | Another ad selected without serving the focal campaign                                                          |
+  | Point at which the ghost impression is recorded     | When the focal ad wins the simulated auction                        | A playback-start event observable under the same conditions in both groups                                      |
+  | Required condition                                  | The real and simulated auctions use equivalent selection conditions | Selection and measurement conditions are equivalent across groups except for the presence of the focal campaign |
+
+In the original design, the ad actually served to a control user is selected through an auction that excludes the focal ad, while a simulated auction including the focal ad runs in parallel.
+An opportunity in which the focal ad wins the simulated auction becomes a ghost impression.
+In the proposed design, the platform records an opportunity when the focal campaign is selected by the ordinary selection process.
+It does not serve that campaign to control users and serves a different ad instead.
+[Johnson, Lewis, and Nubbemeyer (2016)](https://conference.nber.org/confer/2016/EoDs16/Johnson_Lewis_Nubbemeyer.pdf)
+
+The important requirement is to reproduce the ordinary selection process after removing the focal campaign.
+If excluding a candidate can change the selection result, the platform must select again from the remaining candidates.
+Measurement should also begin when playback actually starts under conditions observable in both groups, rather than when the ad server merely chooses a candidate.
+
+## Connecting Ad Selection to the Experimental Unit
+
+In an ad delivery system, the unit used to select individual ad candidates does not necessarily match the unit at which effectiveness should be evaluated.
+Here, the platform selects among multiple ad candidates, while the campaign above them serves as the experimental unit.
+
+Randomization uses a persistent pre-exposure ID together with the campaign.
+Assignment is deterministic so that the same ID-campaign pair cannot move between groups during the study.
+If the campaign has multiple conversion points, such as purchases and registrations, they are treated as multiple outcomes of the same campaign experiment rather than as separate experiments.
+
+For each ad request, the platform first selects an ad as usual, regardless of whether an experiment is running.
+If the selected ad belongs to the experimental campaign, the platform checks the assignment.
+It serves the selected ad to treatment users.
+For control users, it removes the focal campaign from the candidate set, selects again, and serves another ad.
+
+If the focal campaign is removed from the control group's candidates from the outset, the platform cannot know whether that ID had an opportunity to receive the campaign.
+The initial selection result must therefore be recorded before selecting the ad to serve to the control user.
+
+What the platform serves to control changes the meaning of the comparison.
+
+  | Control condition                   | Effect being estimated                                  | Main concern                                                                |
+  | ----------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------- |
+  | No ad                               | Focal ad versus no ad                                   | The ad-slot experience and measurement conditions may differ across groups  |
+  | Neutral ad                          | Focal ad versus neutral ad                              | Obtaining neutral inventory has a cost, and ad selection becomes asymmetric |
+  | Reselect without the focal campaign | Focal ad versus the ad that would ordinarily replace it | The estimate includes the effect of competing ads                           |
+
+Reselection is closest to the Ghost Ads framework.
+The ad that the delivery system selects when the focal campaign is absent becomes the control condition.
+The resulting estimand is therefore the effect of the focal ad relative to an alternative ad, not relative to no ad.
+
+The analysis population consists of IDs for which the ordinary selection process chose the focal campaign and an actual playback start was observed.
+Within this population, the experiment compares the number of conversions under ordinary delivery of the focal campaign with the number under replacement by another ad.
+Because control users also receive an ad, the estimate captures the effect of serving the focal campaign rather than the effect of advertising in general.
+
+## Measuring Conversions in the Control Group
+
+Randomizing delivery is not enough.
+Incremental CV cannot be calculated unless conversions are also observable for the control group.
+
+This article limits the setting to one in which AVOD viewing and conversion on the advertiser's website occur in the same browser and can be linked through a shared identifier.
+This gives the experiment approximately the same observation scope as the existing Attributed CV measurement.
+Extending the design to television apps or cross-device journeys would require a different identity-matching method and is outside the scope of this article.
+
+For incrementality measurement, ad delivery and subsequent outcome measurement should be treated as separate processes.
+The platform observes actual playback start through a common event in both treatment and control, then records the ID, campaign, assignment, and measurement start time in an experiment log.
+Subsequent CVs are linked to the same experiment ID regardless of whether the user saw or clicked the focal ad.
+
+  | Stage          | Role in experiment measurement                                                                |
+  | -------------- | --------------------------------------------------------------------------------------------- |
+  | Playback start | Observe the same event in both groups and record the ID, campaign, assignment, and start time |
+  | Conversion     | Link the CV event to the experiment ID                                                        |
+  | Aggregation    | Compare all outcomes between treatment and control                                            |
+
+The minimum logging requirement can be reduced to two types of records: delivery opportunities and conversions.
+
+  | Log                               | Main fields                                                                        |
+  | --------------------------------- | ---------------------------------------------------------------------------------- |
+  | Experimental delivery opportunity | Experiment ID, user ID, assignment, playback start time, actual or ghost indicator |
+  | CV event                          | User ID, conversion point, event time, event ID for deduplication                  |
+
+Joining these records by user ID and observation window makes it possible to count conversions in both groups independently of exposure to the focal ad.
+The key requirement is that control users leave an experiment-participation record and that their subsequent conversions arrive through the same path.
+
+This measurement path is better kept separate from existing attribution.
+Attribution counts conversions linked to impressions or clicks, whereas incrementality measurement also needs conversions from control users for whom no focal-ad impression exists.
+
+Whether the measurement conditions are balanced across groups can be checked through playback-start rates, pre-assignment characteristics, measurement start dates, and the distribution of observed days per ID.
+
+## The Conversion Observation Window
+
+Campaign delivery and outcome measurement need not end at the same time.
+A conversion may occur some time after the user sees an ad.
+The proposed design therefore continues to observe CVs from IDs already enrolled in measurement for a fixed follow-up period after campaign delivery ends.
+The length of that period should reflect both the conversion-lag distribution and comparability with existing reporting.
+
+This differs from an attribution window that counts conversions occurring within a fixed interval after each impression.
+For each ID, the experiment counts CVs from the first measurement-eligible event through a common study end date.
+
+Google's user-based Conversion Lift studies likewise compare all conversions across the two groups during the study rather than applying standard attribution rules.
+The treatment of conversions after the study differs across documented products.
+For Demand Gen studies, Google predicts additional conversions after the study from the observed conversion-delay pattern and includes them as delayed incremental conversions in reporting.
+Its public documentation does not describe a universal rule that directly observes conversions for a fixed period after delivery ends.
+[Google Ads Help](https://support.google.com/google-ads/answer/14102450?hl=ja)
+
+The follow-up period must therefore be stated as a platform-specific design choice.
+A longer period captures more delayed conversions, but IDs that enter measurement earlier in the campaign receive more observation time.
+Measurement start dates and observed days should be compared across groups to ensure that this imbalance does not differ by assignment.
+
+## Calculating and Reporting Incremental CV
+
+The primary outcome is the number of eligible CV events, not a user-level binary conversion indicator.
+If the same ID makes three distinct purchases, all three count as CVs; repeated delivery of the same event is deduplicated.
+Results are calculated separately for each conversion point.
+
+Let $N_T$ and $N_C$ denote the numbers of IDs entering measurement in treatment and control, and let $C_T$ and $C_C$ denote their respective CV counts during the observation window.
+Incremental CV at the scale of the treatment group is
+
+$$
+  \widehat{\Delta}_T = N_T\left( \frac{C_T}{N_T} - \frac{C_C}{N_C} \right)
+                     = C_T - \frac{N_T}{N_C}C_C.
+$$
+
+For example, if treatment contains 100,000 IDs and 1,200 CVs while control contains 100,000 IDs and 880 CVs, Incremental CV at the treatment-group scale is 320.
+
+  | Metric         | Example | Meaning                                                                                            |
+  | -------------- | ------: | -------------------------------------------------------------------------------------------------- |
+  | Attributed CV  |   1,000 | CVs linked to ad interactions under the existing attribution rules                                 |
+  | Incremental CV |     320 | Estimated additional CVs caused by serving the focal campaign, at the scale of the treatment group |
+
+The 320 Incremental CVs are not an identified subset of the 1,000 Attributed CVs.
+The estimate comes from the difference between groups; it does not label individual conversions as caused by the ad.
+Because the aggregation rules also differ, Incremental CV is not guaranteed to be less than or equal to Attributed CV.
+
+The two metrics serve different purposes rather than competing with each other.
+Attributed CV supports routine campaign monitoring and advertiser reporting.
+Incremental CV measures the campaign's causal effect and can inform the value of the ad product and budget allocation.
+The RCT data accumulated through these experiments may also support later work on CATE estimation and delivery policies.
+Routine operations, advertising investment decisions, and future delivery optimization do not need to rely on a single metric.
+
+Reports should include $N_T,N_C$, $C_T,C_C$, CVs per ID, Incremental CV, and a confidence interval.
+Because the same ID can contribute multiple conversions while remaining the experimental unit, uncertainty should also be evaluated at the ID level.
+This design does not scale the estimate to all assigned IDs or to a total population that includes the control group.
+
+## Budget and Delivery Interference
+
+Withholding the focal ad from control users affects both campaign delivery volume and budget spend.
+Leaving the withheld volume unspent and reallocating it to treatment represent different operating conditions and therefore different estimands.
+
+Under reallocation, frequency, reach, and delivery timing in treatment may differ from normal operation.
+The randomized groups remain comparable, but the estimate describes the combined policy of holding out control users and reallocating spend.
+Without reallocation, it instead describes a campaign operating with less spend than usual.
+
+This design chooses to reallocate the volume not served to control users back to treatment because that more closely reflects normal operation under a binding budget constraint.
+The estimand is therefore not merely the effect of an ad creative; it is the effect of the full delivery policy, including the holdout and budget reallocation.
+
+In either case, the result cannot simply be scaled in proportion to delivery without a holdout.
+Reporting should include the holdout rate, the treatment of budget not spent on control users, and resulting changes in reach and frequency.
+
+## Design Lessons from Existing Implementations
+
+In Moloco's retail media example, the ordinary ad decision process runs for both groups, but the winning focal ad is not served to control users.
+Other advertisers can continue to serve ads.
+The comparison between exposed treatment users and control users who would have been exposed includes all purchases during the test period, not only purchases attributed to the ad.
+The proposed design shares the same separation between ad selection, withholding in control, and outcome measurement.
+[Moloco](https://www.moloco.com/ja/blog/proving-incremental-roas-retail-media-advertising)
+
+DoorDash Sponsored Listings replace the control group's ad with an organic product listing and record that placement as a ghost.
+DoorDash also checks symmetry between the groups not only in the auction but in the stage that blends ads with organic listings.
+The same principle applies here: the design must verify actual display or playback start in both groups, not merely ad selection.
+[DoorDash Ads](https://advertising.doordash.com/en-us/resources/measuring-incrementality-with-ghost-ads-at-doordash)
+
+Roku has published a OneView example in which some streaming ads are not served and control-group impressions and conversions are predicted.
+The public article does not explain how control-group CVs are matched or how the prediction is implemented, but it provides a precedent for embedding incrementality measurement into streaming advertising.
+[Roku Advertising](https://advertising.roku.com/learn/resources/the-best-way-to-measure-tv-streaming-performance-incrementality)
+
+There is no basis for assuming that these companies use the same internal implementation.
+The reusable principle is to preserve ordinary ad selection while recording counterfactual exposure and to measure outcomes in both groups independently of attribution.
+
+## From RCT Data to Delivery Policies
+
+Running this system repeatedly would accumulate RCT data containing pre-exposure characteristics, assignment, campaign, and conversions.
+After estimating the average effect of a campaign, the next question is how that effect varies across users.
+
+Supporting future CATE estimation requires the ability to reconstruct covariates as they existed at assignment.
+Viewing behavior or clicks recorded after exposure are post-treatment variables and should not be used as predictors.
+The experiment log should therefore preserve not only assignment but also the point in time at which pre-exposure features can be retrieved.
+
+A Doubly Robust Learner (DR-Learner), for example, could estimate the Conditional Average Treatment Effect (CATE), which could then support a policy that prioritizes delivery to IDs with high predicted incremental effects.
+Before deploying that policy, historical randomized data could be held out for evaluation and used to estimate its expected Incremental CV offline.
+
+The only factor randomized in this experiment, however, is whether the focal campaign or an alternative ad is served.
+Creative and frequency are not randomized, so these data alone cannot identify the best creative treatment or contact frequency.
+Applying a CATE model estimated from historical data to a later period also requires the population, ads, and competitive environment to remain sufficiently stable.
+Because a new policy may change budget allocation and frequency, its effect ultimately needs to be validated in a new experiment.
+
+## Conclusion
+
+Measuring Incremental CV separately from Attributed CV requires more than adding an aggregation formula.
+The platform must use its ordinary selection process to identify control users who would have been exposed under treatment, then measure conversions for those users even though they never receive the focal ad.
+
+The proposed design applies a campaign-level holdout after the ordinary selection process chooses the focal campaign.
+Playback start is recorded under the same conditions for treatment and control, and all subsequent CVs are observed through a dedicated experiment measurement path.
+The difference in counts is reported as Incremental CV, while existing Attributed CV remains a separate metric.
+
+Advertising effectiveness measurement begins with choosing the counterfactual and designing the path through which its outcomes can be observed.
+The design of the experiment and its logs therefore comes before the choice of estimator.
