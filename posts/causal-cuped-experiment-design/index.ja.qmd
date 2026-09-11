@@ -16,22 +16,32 @@ set.seed(2026)
 
 n_users <- 4000
 n_impression <- 100
-att_true <- 0.01049
-alpha <- 2.773
+target_baseline <- 0.935
+ate_true <- 0.01049
 sd_user <- 0.5
 
 user_effect <- rnorm(n_users, mean = 0, sd = sd_user)
+
+# この 4,000 人の平均完再生確率が 93.5% になる切片を求める
+alpha <- uniroot(
+  \(alpha) mean(plogis(alpha + user_effect)) - target_baseline,
+  interval = c(0, 10)
+)$root
+
 p_pre <- plogis(alpha + user_effect)
 
 # 有限標本上の平均処置効果が、シリーズと同じ +1.049 pp になる logit 効果を求める
 tau_logit <- uniroot(
-  \(tau) mean(plogis(alpha + user_effect + tau) - p_pre) - att_true,
+  \(tau) mean(plogis(alpha + user_effect + tau) - p_pre) - ate_true,
   interval = c(0, 1)
 )$root
 
 p_post_0 <- p_pre
 p_post_1 <- plogis(alpha + user_effect + tau_logit)
-treated <- sample(rep(c(FALSE, TRUE), each = n_users / 2))
+treated <- sample(c(
+  rep(FALSE, n_users / 2),
+  rep(TRUE, n_users / 2)
+))
 
 experiment <- tibble(
   user_id = seq_len(n_users),
@@ -49,26 +59,28 @@ experiment <- tibble(
   )
 
 theta <- with(experiment, cov(y, x) / var(x))
-x_bar <- mean(experiment$x)
+x_bar <- with(experiment, mean(x))
 
 experiment <- experiment |>
   mutate(
     y_cuped = y - theta * (x - x_bar),
-    y_gain = y - (x - x_bar)
+    y_theta1 = y - (x - x_bar)
   )
 
 estimate_diff <- function(data, outcome, method) {
   by_arm <- data |>
     summarise(
-      mean = mean({{ outcome }}),
+      outcome_mean = mean({{ outcome }}),
       variance = var({{ outcome }}),
       n = n(),
       .by = treated
-    ) |>
-    arrange(treated)
+    )
 
-  estimate <- by_arm$mean[2] - by_arm$mean[1]
-  se <- sqrt(sum(by_arm$variance / by_arm$n))
+  estimate <- with(
+    by_arm,
+    outcome_mean[treated] - outcome_mean[!treated]
+  )
+  se <- with(by_arm, sqrt(sum(variance / n)))
 
   tibble(
     method,
@@ -82,12 +94,16 @@ estimate_diff <- function(data, outcome, method) {
 estimates <- bind_rows(
   estimate_diff(experiment, y, "Unadjusted"),
   estimate_diff(experiment, y_cuped, "CUPED (estimated theta)"),
-  estimate_diff(experiment, y_gain, "Pre-post difference (theta = 1)")
+  estimate_diff(experiment, y_theta1, "Pre-post difference (theta = 1)")
 )
 
 rho <- with(experiment, cor(x, y))
-variance_ratio <- with(experiment, var(y_cuped) / var(y))
-gain_variance_ratio <- with(experiment, var(y_gain) / var(y))
+cuped_variance_ratio <- with(experiment, var(y_cuped) / var(y))
+theta1_variance_ratio <- with(experiment, var(y_theta1) / var(y))
+se_reduction <- with(
+  estimates,
+  1 - se[method == "CUPED (estimated theta)"] / se[method == "Unadjusted"]
+)
 ```
 
 [前回の記事](/posts/causal-impact-bsts/)まで、iOS だけにリリースされた広告一時停止機能の効果を、差分の差分法 (Difference in Differences; DiD)、合成コントロール法 (Synthetic Control Method; SCM)、CausalImpact で推定してきました。
@@ -153,7 +169,7 @@ $$
                               - (\bar{Y}_0 - \theta\bar{X}_0)
 $$
 
-中心化に使った定数 $\theta\bar{X}$ は群間差を取ると消えます。また、ランダム化されていれば、実験前の完再生率の群間差 $\bar{X}_1 - \bar{X}_0$ の期待値は 0 です。したがって、固定した $\theta$ による調整は ATE を変えず、今回の割付で偶然生じた事前差だけを差し引きます。
+調整後のアウトカムは、$Y_{\mathrm{adj}} = Y - \theta X + \theta\bar{X}$ とも書けます。最後の $\theta\bar{X}$ はすべてのユーザーに共通するため、処置群と対照群の平均差を取ると消えます。また、ランダム化されていれば、実験前の完再生率の群間差 $\bar{X}_1 - \bar{X}_0$ の期待値は 0 です。$\theta$ を固定して考えると、この調整によって ATE の期待値は変わりません。
 
 残る問題は、どの程度差し引くかを決める $\theta$ です。[Deng et al. (2013)](https://doi.org/10.1145/2433396.2433413) がオンライン実験へ導入した CUPED では、調整後の分散が最も小さくなる値を使います。分散を展開すると、
 
@@ -180,7 +196,7 @@ $$
 
 となります。実験前と実験期間中の完再生率の相関が高いほど、CUPED による分散削減は大きくなります。たとえば $\rho = 0.6$ なら分散は $1 - 0.6^2 = 0.64$ 倍となり、同じ検出力を得るために必要なサンプルサイズも、おおむね 64% まで減らせます。一方で、事前期間が短い、指標の日々の変動が大きいといった理由で相関が低ければ、CUPED を使っても精度はほとんど変わりません。
 
-母集団の $\theta^*$ は分からないため、実際には標本の共分散と分散から推定します。本記事では、同じ実験データから共通の $\theta$ を 1 本推定します。係数推定の影響は大標本では一次近似上消えますが、有限標本で厳密に扱うなら、処置指標と中心化した事前値を含む回帰を使い、ロバスト標準誤差までまとめて推定できます。
+母集団の $\theta^*$ は分からないため、実際には実験データの共分散と分散から推定します。本記事では、処置群と対照群を合わせたデータを使って $\theta$ を推定します。
 
 ## 合成個票データによる検証
 
@@ -188,20 +204,83 @@ $$
 
 4,000 ユーザーを処置群と対照群に 2,000 人ずつ割り付け、各ユーザーは実験前・実験中に 100 インプレッションずつ持つとします。この単純化により、ユーザー別完再生率の平均と、全インプレッションから計算した完再生率が一致します。実務ではユーザーごとのインプレッション数が異なるため、「ユーザー別の率を等重みで平均する」のか、「全 complete を全 impression で割る」のかを、実験前に推定対象として決めておく必要があります。
 
-ユーザーごとの完再生しやすさを表すため、ユーザー固有効果 $u_i \sim N(0,0.5^2)$ を実験前と実験中で共有します。完再生率は次のように生成します。
+ユーザーごとの完再生しやすさを表すため、ユーザー固有効果 $u_i \sim N(0,0.5^2)$ を実験前と実験中で共有します。標準偏差 0.5 は実データから推定した値ではなく、CUPED の働きが見える程度の相関を持たせるために置いた値です。完再生率は次のように生成します。
 
 $$
   \begin{aligned}
-    X_i                       & \sim \frac{1}{100}\mathrm{Binomial}(100,p_i),         \\
+    X_i                       & \sim \frac{1}{100}\mathrm{Binomial}(100,p_i^{(0)}),   \\
     Y_i                       & \sim \frac{1}{100}\mathrm{Binomial}(100,p_i^{(Z_i)}), \\
-    \mathrm{logit}(p_i)       & = 2.773 + u_i,                                        \\
-    \mathrm{logit}(p_i^{(1)}) & = \mathrm{logit}(p_i^{(0)}) + \tau_{\mathrm{logit}}
+    \mathrm{logit}(p_i^{(0)}) & = \alpha + u_i,                                       \\
+    \mathrm{logit}(p_i^{(1)}) & = \alpha + u_i + \tau_{\mathrm{logit}}
   \end{aligned}
 $$
 
-$\tau_{\mathrm{logit}}$ は、この 4,000 人における ATE の真値が、これまでの記事と同じ +1.049 pp になるように決めます。二項乱数は実験前と実験中で独立ですが、$u_i$ を共有しているため、普段から完再生率が高いユーザーほど実験中も高くなる傾向が残ります。その結果、$X$ と $Y$ の相関は `r scales::number(rho, accuracy = 0.001)`、推定した $\theta$ は `r scales::number(theta, accuracy = 0.001)` となりました。
+生成時に外から与えるのは、[シリーズの最初の記事](/posts/causal-synthetic-data-design/)に合わせたベースラインの 93.5% と、ATE の +1.049 pp です。まず 4,000 人分の $u_i$ を生成し、その平均完再生確率が 93.5% になるように切片 $\alpha$ を逆算します。次に、同じ 4,000 人に対する ATE が +1.049 pp になるように $\tau_{\mathrm{logit}}$ を逆算します。したがって、$\alpha$ と $\tau_{\mathrm{logit}}$ は固定値として置くのではなく、生成したユーザー集団と 2 つの目標値から決まります。
 
-理論上の分散比 $1 - \rho^2$ は `r scales::percent(1 - rho^2, accuracy = 0.1)` です。実際の標本分散も、CUPED によって未調整の `r scales::percent(variance_ratio, accuracy = 0.1)` まで下がっています。
+実験前と実験中の二項乱数は独立に生成しますが、両期間で同じ $u_i$ を使います。そのため、普段から完再生率が高いユーザーは、実験中も高い傾向が残ります。生成に使った目標値と、そこから得られた係数、相関、分散比を @tbl-simulation-diagnostics にまとめます。計算式も併記しているため、それぞれの値がどこから得られたかを確認できます。
+
+```{r}
+#| label: tbl-simulation-diagnostics
+#| tbl-cap: >-
+#|   合成データの設定値と計算結果.
+#| echo: false
+#| message: false
+
+tibble(
+  item = c(
+    "Target baseline",
+    "Target ATE",
+    "alpha",
+    "tau_logit",
+    "rho",
+    "theta",
+    "Formula-based CUPED variance ratio",
+    "Observed CUPED variance ratio",
+    "Theta = 1 variance ratio",
+    "CUPED standard error reduction"
+  ),
+  calculation = c(
+    "Fixed simulation target",
+    "Fixed simulation target",
+    "`mean(plogis(alpha + user_effect)) = target_baseline`",
+    "`mean(p_post_1 - p_post_0) = ate_true`",
+    "`cor(x, y)`",
+    "`cov(y, x) / var(x)`",
+    "`1 - rho^2`",
+    "`var(y_cuped) / var(y)`",
+    "`var(y_theta1) / var(y)`",
+    "`1 - se_cuped / se_unadjusted`"
+  ),
+  value = c(
+    scales::percent(target_baseline, accuracy = 0.1),
+    scales::number(
+      ate_true * 100,
+      accuracy = 0.001,
+      prefix = "+",
+      suffix = " pp"
+    ),
+    scales::number(alpha, accuracy = 0.001),
+    scales::number(tau_logit, accuracy = 0.001),
+    scales::number(rho, accuracy = 0.001),
+    scales::number(theta, accuracy = 0.001),
+    scales::percent(1 - rho^2, accuracy = 0.1),
+    scales::percent(cuped_variance_ratio, accuracy = 0.1),
+    scales::percent(theta1_variance_ratio, accuracy = 0.1),
+    scales::percent(se_reduction, accuracy = 0.1)
+  )
+) |>
+  gt::gt() |>
+  gt::fmt_markdown(columns = calculation) |>
+  gt::cols_label(
+    item = "Quantity",
+    calculation = "Calculation",
+    value = "Value"
+  ) |>
+  gt::cols_align(align = "right", columns = value) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+公式 $1 - \rho^2$ から求めた分散比と、調整後の標本分散から直接求めた分散比は、丸め誤差を除いて一致します。続いて、未調整、CUPED、$\theta = 1$ の 3 つの推定結果を比較します。
 
 ```{r}
 #| label: tbl-estimates
@@ -229,7 +308,7 @@ estimates |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-@tbl-estimates の 3 つの推定値は、いずれも真値に近い値です。ただし、未調整の推定と比べると、CUPED は標準誤差を `r scales::percent(1 - estimates$se[2] / estimates$se[1], accuracy = 0.1)` 縮めています。この 1 回のシミュレーションで点推定が真値に近づいたかどうかは乱数に左右されますが、実験を繰り返したときの推定値のばらつきは小さくなります。CUPED で確認すべきなのは、真値への近さではなく、この区間幅の違いです。
+@tbl-estimates の 3 つの推定値は、いずれも真値に近い値です。一方、標準誤差は CUPED の方が小さく、その削減率は @tbl-simulation-diagnostics に示したとおりです。この 1 回のシミュレーションで点推定が真値に近づいたかどうかは乱数に左右されますが、実験を繰り返したときの推定値のばらつきは小さくなります。CUPED で確認すべきなのは、真値への近さではなく、この区間幅の違いです。
 
 ```{r}
 #| label: fig-estimates
@@ -241,7 +320,7 @@ estimates |>
 estimates |>
   mutate(method = fct_rev(method)) |>
   ggplot(aes(x = estimate, y = method)) +
-  geom_vline(xintercept = att_true, linetype = "dashed", color = "grey50") +
+  geom_vline(xintercept = ate_true, linetype = "dashed", color = "grey50") +
   geom_errorbar(aes(xmin = lower, xmax = upper), width = 0.15) +
   geom_point(size = 2.5) +
   scale_x_continuous(
@@ -266,7 +345,7 @@ $$
   \hat{\tau}(1) = (\bar{Y}_1 - \bar{X}_1) - (\bar{Y}_0 - \bar{X}_0)
 $$
 
-となり、処置群と対照群のそれぞれで実験前から実験中への変化を作り、その差を取る DiD と同じ式になります。gain score の群間差と呼んでも同じです。この対応は、[Ding (2023)](https://arxiv.org/abs/2305.18793) による共変量調整の整理や、[Courthoud (2024)](https://matteocourthoud.github.io/post/cuped/) による CUPED と DiD の比較でも扱われていますが、式が同じでも両者の目的は異なります。
+となり、処置群と対照群のそれぞれで実験前から実験中への変化を作り、その差を取る DiD と同じ式になります。この対応は、[Ding (2023)](https://arxiv.org/abs/2305.18793) による共変量調整の整理や、[Courthoud (2024)](https://matteocourthoud.github.io/post/cuped/) による CUPED と DiD の比較でも扱われています。ただし、式が同じでも両者の目的は異なります。
 
   |                  | 観察データの DiD                       | ランダム化比較の CUPED               |
   | ---------------- | -------------------------------------- | ------------------------------------ |
@@ -282,13 +361,15 @@ $$
 
 $X$ と $Y$ の分散がどちらも $\sigma^2$ なら、右辺は $2\sigma^2(1 - \rho)$ です。未調整の分散 $\sigma^2$ より小さくなるのは、$\rho > 0.5$ のときに限られます。相関が弱いのに機械的に事前差を引くと、かえって分散が増えます。
 
-今回のデータでは、$\theta = 1$ としたときの分散比は `r scales::percent(gain_variance_ratio, accuracy = 0.1)` です。未調整よりは小さいものの、最適な $\theta$ を使った CUPED ほどは下がりません。DiD が識別のために係数を 1 に固定するのに対し、CUPED は分散を小さくするために係数を推定する、という違いがここに表れています。
+@tbl-simulation-diagnostics では、$\theta = 1$ とした場合についても、$\mathrm{Var}(Y - X)/\mathrm{Var}(Y)$ から分散比を計算しています。今回のデータでは未調整より小さくなりますが、最適な $\theta$ を使った CUPED ほどには下がりません。DiD が識別のために係数を 1 に固定するのに対し、CUPED は分散を小さくするために係数を推定する、という違いがここに表れています。
 
 ## BigQuery による実装
 
 CUPED の計算に機械学習モデルは必要ありません。ユーザー別の実験前の完再生率 $X$、実験期間中のアウトカム $Y$、割付 $Z$ を用意し、$X$ の平均・分散と $X,Y$ の共分散を集計すれば実装できます。
 
-以下では、`experiment_events` に `user_id`, `arm`, `period`, `impression`, `complete` があるとします。まずユーザー単位で実験前と実験期間中の完再生率を作り、両方を観測できるユーザーについて $\theta$ と調整後のアウトカムを計算します。
+以下の SQL は、今回の合成データと同じく、分析対象の全ユーザーが実験前と実験期間中の両方に完再生率を持つ、という単純化のもとでの実装例です。実データでこの条件を満たさない場合、実験期間中の値の有無で分析対象を絞ることはできません。分析対象とゼロインプレッションの扱いを割付前に決める必要があります。
+
+`experiment_events` に `user_id`, `arm`, `period`, `impression`, `complete` があるとし、まずユーザー単位で両期間の完再生率を作ります。その後、$\theta$ と調整後のアウトカムを計算します。
 
 ```sql
 WITH user_metrics AS (
@@ -306,26 +387,23 @@ WITH user_metrics AS (
   FROM `project.dataset.experiment_events`
   GROUP BY user_id
 ),
-eligible AS (
-  SELECT *
-  FROM user_metrics
-  WHERE x IS NOT NULL
-    AND y IS NOT NULL
-),
+
 cuped_parameter AS (
   SELECT
     AVG(x) AS x_bar,
     SAFE_DIVIDE(COVAR_SAMP(y, x), VAR_SAMP(x)) AS theta
-  FROM eligible
+  FROM user_metrics
 ),
+
 adjusted AS (
   SELECT
     arm,
     y,
     y - theta * (x - x_bar) AS y_cuped
-  FROM eligible
+  FROM user_metrics
   CROSS JOIN cuped_parameter
 )
+
 SELECT
   arm,
   COUNT(*) AS n_users,
@@ -333,7 +411,8 @@ SELECT
   AVG(y_cuped) AS mean_cuped,
   VAR_SAMP(y_cuped) AS var_cuped
 FROM adjusted
-GROUP BY arm;
+GROUP BY arm
+;
 ```
 
 この SQL は群別の平均と分散を返します。処置群と対照群の `mean_cuped` の差が CUPED による ATE の推定値であり、群別の `var_cuped` をそれぞれのユーザー数で割って足せば標準誤差も計算できます。
@@ -372,22 +451,32 @@ set.seed(2026)
 
 n_users <- 4000
 n_impression <- 100
-att_true <- 0.01049
-alpha <- 2.773
+target_baseline <- 0.935
+ate_true <- 0.01049
 sd_user <- 0.5
 
 user_effect <- rnorm(n_users, mean = 0, sd = sd_user)
+
+# この 4,000 人の平均完再生確率が 93.5% になる切片を求める
+alpha <- uniroot(
+  \(alpha) mean(plogis(alpha + user_effect)) - target_baseline,
+  interval = c(0, 10)
+)$root
+
 p_pre <- plogis(alpha + user_effect)
 
 # 有限標本上の平均処置効果が、シリーズと同じ +1.049 pp になる logit 効果を求める
 tau_logit <- uniroot(
-  \(tau) mean(plogis(alpha + user_effect + tau) - p_pre) - att_true,
+  \(tau) mean(plogis(alpha + user_effect + tau) - p_pre) - ate_true,
   interval = c(0, 1)
 )$root
 
 p_post_0 <- p_pre
 p_post_1 <- plogis(alpha + user_effect + tau_logit)
-treated <- sample(rep(c(FALSE, TRUE), each = n_users / 2))
+treated <- sample(c(
+  rep(FALSE, n_users / 2),
+  rep(TRUE, n_users / 2)
+))
 
 experiment <- tibble(
   user_id = seq_len(n_users),
@@ -405,26 +494,28 @@ experiment <- tibble(
   )
 
 theta <- with(experiment, cov(y, x) / var(x))
-x_bar <- mean(experiment$x)
+x_bar <- with(experiment, mean(x))
 
 experiment <- experiment |>
   mutate(
     y_cuped = y - theta * (x - x_bar),
-    y_gain = y - (x - x_bar)
+    y_theta1 = y - (x - x_bar)
   )
 
 estimate_diff <- function(data, outcome, method) {
   by_arm <- data |>
     summarise(
-      mean = mean({{ outcome }}),
+      outcome_mean = mean({{ outcome }}),
       variance = var({{ outcome }}),
       n = n(),
       .by = treated
-    ) |>
-    arrange(treated)
+    )
 
-  estimate <- by_arm$mean[2] - by_arm$mean[1]
-  se <- sqrt(sum(by_arm$variance / by_arm$n))
+  estimate <- with(
+    by_arm,
+    outcome_mean[treated] - outcome_mean[!treated]
+  )
+  se <- with(by_arm, sqrt(sum(variance / n)))
 
   tibble(
     method,
@@ -435,15 +526,31 @@ estimate_diff <- function(data, outcome, method) {
   )
 }
 
-bind_rows(
+estimates <- bind_rows(
   estimate_diff(experiment, y, "Unadjusted"),
   estimate_diff(experiment, y_cuped, "CUPED (estimated theta)"),
-  estimate_diff(experiment, y_gain, "Pre-post difference (theta = 1)")
+  estimate_diff(experiment, y_theta1, "Pre-post difference (theta = 1)")
 )
 
-# CUPED の係数、相関、分散比
-with(experiment, cov(y, x) / var(x))
-with(experiment, cor(x, y))
-with(experiment, var(y_cuped) / var(y))
-with(experiment, var(y_gain) / var(y))
+# 合成データの設定値と計算結果
+rho <- with(experiment, cor(x, y))
+cuped_variance_ratio <- with(experiment, var(y_cuped) / var(y))
+theta1_variance_ratio <- with(experiment, var(y_theta1) / var(y))
+se_reduction <- with(
+  estimates,
+  1 - se[method == "CUPED (estimated theta)"] / se[method == "Unadjusted"]
+)
+
+tibble(
+  target_baseline,
+  target_ate = ate_true,
+  alpha,
+  tau_logit,
+  rho,
+  theta,
+  formula_cuped_variance_ratio = 1 - rho^2,
+  cuped_variance_ratio,
+  theta1_variance_ratio,
+  se_reduction
+)
 ```
