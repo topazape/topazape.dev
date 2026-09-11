@@ -1,9 +1,9 @@
 ---
-title: "ベイズ構造時系列：点推定から事後予測区間へ"
+title: "CausalImpact：ベイズ構造時系列による反実仮想の構築"
 draft: true
 draft-mode: unlinked
 date: "2026-10-28"
-categories: ["causal-inference", "statistics"]
+categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
 ```{r}
@@ -136,8 +136,8 @@ rates <- panel |>
   arrange(date) |>
   relocate(date, ios) # 1列目 date、2列目 = y (ios)
 
-pre_period <- c(min(rates$date), date_treat - 1)
-post_period <- c(date_treat, max(rates$date))
+pre_period <- lubridate::ymd(c("2025-12-01", "2026-05-31"))
+post_period <- lubridate::ymd(c("2026-06-01", "2026-07-31"))
 
 # ローカルレベル + 曜日成分 (nseasons = 7) + 回帰成分
 impact <- CausalImpact::CausalImpact(
@@ -157,7 +157,6 @@ impact_noseason <- CausalImpact::CausalImpact(
 
 avg <- impact$summary |>
   as_tibble(rownames = "period") |>
-  pivot_longer(-period, names_to = "metric") |>
   filter(period == "Average")
 ```
 
@@ -170,7 +169,6 @@ avg <- impact$summary |>
 #| message: false
 
 avg |>
-  pivot_wider(names_from = metric) |>
   select(
     Actual,
     Pred,
@@ -228,29 +226,24 @@ spike-and-slab 事前分布の期待モデルサイズは 3 で、10 本の対�
 ```{r}
 #| label: tbl-inclusion
 #| tbl-cap: >-
-#|   回帰係数の事後包含確率（係数が 0 でない事後サンプルの割合.
-#|   初期 10% を除く）.
+#|   回帰係数の事後包含確率（係数が 0 でない事後サンプルの割合）.
+#|   バーンインは対数尤度に基づいて選択.
 #|   事前包含確率は両モデルとも 30%.
 #| echo: false
 #| message: false
 
-burn <- tibble(
-  model = c("seasonal", "noseason"),
-  burn = c(
-    bsts::SuggestBurn(0.1, impact$model$bsts.model),
-    bsts::SuggestBurn(0.1, impact_noseason$model$bsts.model)
-  )
-)
+coef_draws <- function(fit, model_name) {
+  burn <- bsts::SuggestBurn(0.1, fit$model$bsts.model)
+
+  fit$model$bsts.model$coefficients[-seq_len(burn), , drop = FALSE] |>
+    as_tibble() |>
+    mutate(model = model_name, draw = row_number(), .before = 1)
+}
 
 draws <- bind_rows(
-  seasonal = as_tibble(impact$model$bsts.model$coefficients),
-  noseason = as_tibble(impact_noseason$model$bsts.model$coefficients),
-  .id = "model"
-) |>
-  mutate(draw = row_number(), .by = model) |>
-  left_join(burn, by = "model") |>
-  filter(draw > burn) |>
-  select(-burn)
+  coef_draws(impact, "seasonal"),
+  coef_draws(impact_noseason, "noseason")
+)
 
 inclusion <- draws |>
   pivot_longer(-c(model, draw), names_to = "series", values_to = "beta") |>
@@ -295,7 +288,6 @@ estimates <- bind_rows(
     select(estimate, lower = ci_lower, upper = ci_upper),
   "SCM" = tibble(estimate = 0.0108),
   "CausalImpact" = avg |>
-    pivot_wider(names_from = metric, values_from = value) |>
     select(
       estimate = AbsEffect,
       lower = AbsEffect.lower,
@@ -354,7 +346,7 @@ library(tidyverse)
 date_treat <- lubridate::ymd("2026-06-01")
 att_true <- 0.01049
 
-panel <- read_csv("../../data/causal-synthetic-data-design/panel_parallel.csv")
+panel <- read_csv("panel_parallel.csv")
 
 # デバイス名のハイフンは formula で扱いにくいため、下線に置き換える
 # 1 列目が日付、2 列目が処置ユニット (iOS)、3 列目以降が 10 種類の対照デバイス
@@ -368,8 +360,8 @@ rates <- panel |>
   arrange(date) |>
   relocate(date, ios) # 1列目 date、2列目 = y (ios)
 
-pre_period <- c(min(rates$date), date_treat - 1)
-post_period <- c(date_treat, max(rates$date))
+pre_period <- lubridate::ymd(c("2025-12-01", "2026-05-31"))
+post_period <- lubridate::ymd(c("2026-06-01", "2026-07-31"))
 
 # --- ローカルレベル + 曜日成分 + 回帰成分（seed は CausalImpact が内部で 1 に固定）---
 
@@ -386,12 +378,6 @@ impact$summary["Average", c("AbsEffect", "AbsEffect.lower", "AbsEffect.upper")]
 # 上段：実測値と反実仮想、下段：時点別効果（累積効果のパネルは使用しない）
 plot(impact, c("original", "pointwise"))
 
-# 回帰係数の事後包含確率（初期 10% を除く）
-burn <- bsts::SuggestBurn(0.1, impact$model$bsts.model)
-colMeans(
-  impact$model$bsts.model$coefficients[-seq_len(burn), , drop = FALSE] != 0
-)
-
 # --- 参照用：曜日成分なしのデフォルトモデル ---
 
 impact_noseason <- CausalImpact::CausalImpact(
@@ -401,15 +387,22 @@ impact_noseason <- CausalImpact::CausalImpact(
   model.args = list(niter = 5000)
 )
 
-burn <- bsts::SuggestBurn(0.1, impact_noseason$model$bsts.model)
-colMeans(
-  impact_noseason$model$bsts.model$coefficients[
-    -seq_len(burn),
-    ,
-    drop = FALSE
-  ] !=
-    0
-)
+# 対数尤度に基づくバーンインを除外し、回帰係数の事後包含確率を計算
+coef_draws <- function(fit, model_name) {
+  burn <- bsts::SuggestBurn(0.1, fit$model$bsts.model)
+
+  fit$model$bsts.model$coefficients[-seq_len(burn), , drop = FALSE] |>
+    as_tibble() |>
+    mutate(model = model_name, draw = row_number(), .before = 1)
+}
+
+bind_rows(
+  coef_draws(impact, "seasonal"),
+  coef_draws(impact_noseason, "noseason")
+) |>
+  pivot_longer(-c(model, draw), names_to = "series", values_to = "beta") |>
+  filter(series != "(Intercept)") |>
+  summarise(inclusion = mean(beta != 0), .by = c(model, series))
 
 # --- 比較用：DiD（iOS 対 Android）を事後 61 日窓で計算 ---
 
