@@ -111,11 +111,11 @@ se_reduction <- with(
 )
 ```
 
-Up to the [previous article](/posts/causal-impact-bsts/), we estimated the effect of an ad-pause feature released only on iOS using difference-in-differences (DiD), the synthetic control method (SCM), and CausalImpact.
+Up to the [previous article](/posts/causal-impact-bsts/), the effect of an ad-pause feature released only on iOS was estimated using difference-in-differences (DiD), the synthetic control method (SCM), and CausalImpact.
 
 But there has been a catch in this example from the start.
 Ad pause is a UI feature.
-Before release, we could randomly split iOS users into two groups, enable the feature for only one group, and run an A/B test.
+Before release, iOS users could be randomly split into two groups, with the feature enabled for only one group, to run an A/B test.
 There would be no need to construct a counterfactual from Android or other devices.
 
 Of course, running an experiment does not make every part of the analysis easy.
@@ -124,7 +124,7 @@ The variance of the estimate therefore matters.
 Even with proper randomization, a wide confidence interval can obscure a small effect.
 
 CUPED (Controlled-experiment Using Pre-Experiment Data) addresses this problem by using pre-experiment data to reduce the variance of a randomized comparison.
-In this article, we redesign the same ad-pause feature as a user-level experiment and examine how CUPED improves estimation precision.
+This article redesigns the evaluation of the same ad-pause feature as a user-level experiment and examines how CUPED improves estimation precision.
 
 ## Experimental design with randomized comparison
 
@@ -165,7 +165,7 @@ At minimum, the implementation and logs must verify the following:
 - The treatment does not spill over to the control group.
 - Users are not excluded from the analysis based on behavior observed after assignment.
 
-As in the [first article in this series](/posts/causal-synthetic-data-design/), we simplify the setting by assuming that the ad-pause feature does not affect the number of impressions.
+As in the [first article in this series](/posts/causal-synthetic-data-design/), the setting is simplified by assuming that the ad-pause feature does not affect the number of impressions.
 In practice, pausing may keep users watching and increase their subsequent impressions.
 If so, impressions should be examined as a separate outcome alongside the completion rate.
 
@@ -237,19 +237,19 @@ The sample size required for the same power likewise falls to roughly 64%.
 Conversely, CUPED offers little improvement when the correlation is weak because, for example, the pre-experiment window is short or the metric fluctuates substantially from day to day.
 
 The population value $\theta^*$ is unknown, so in practice we estimate it from the covariance and variance in the experimental data.
-Here, we estimate $\theta$ using the treatment and control groups together.
+Here, $\theta$ is estimated using the treatment and control groups together.
 
 ## Evaluation with synthetic user-level data
 
 The device-by-day panel used so far does not contain user IDs, so it cannot provide user-level pre-experiment outcomes.
-We therefore generate a separate synthetic user-level dataset for an experiment on the same ad-pause feature.
+A separate synthetic user-level dataset is therefore generated for an experiment on the same ad-pause feature.
 
-We assign 4,000 users equally between treatment and control and give each user 100 impressions before and during the experiment.
+The simulation assigns 4,000 users equally between treatment and control and gives each user 100 impressions before and during the experiment.
 Under this simplification, the mean of the user-level completion rates equals the completion rate calculated across all impressions.
 In practice, users have different numbers of impressions.
 The estimand must therefore be specified in advance: either an equally weighted mean of user-level rates or total completions divided by total impressions.
 
-To represent persistent differences in users' propensity to complete an ad, we share a user-specific effect $u_i \sim N(0,0.5^2)$ across the pre-experiment and experimental periods.
+To represent persistent differences in users' propensity to complete an ad, the model shares a user-specific effect $u_i \sim N(0,0.5^2)$ across the pre-experiment and experimental periods.
 The standard deviation of 0.5 is not estimated from real data; it is chosen to induce enough correlation to make the effect of CUPED visible.
 Completion rates are generated as follows:
 
@@ -263,8 +263,8 @@ $$
 $$
 
 The two externally specified inputs are the 93.5% baseline and the +1.049 pp ATE, chosen to match the [first article in this series](/posts/causal-synthetic-data-design/).
-We first generate $u_i$ for all 4,000 users and solve for the intercept $\alpha$ that makes their mean completion probability 93.5%.
-We then solve for $\tau_{\mathrm{logit}}$ so that the ATE among the same 4,000 users is +1.049 pp.
+First, the simulation generates $u_i$ for all 4,000 users and solves for the intercept $\alpha$ that makes their mean completion probability 93.5%.
+It then solves for $\tau_{\mathrm{logit}}$ so that the ATE among the same 4,000 users is +1.049 pp.
 Thus, rather than being fixed directly, $\alpha$ and $\tau_{\mathrm{logit}}$ are determined by the generated user population and the two target values.
 
 The binomial draws for the pre-experiment and experimental periods are independent, but both use the same $u_i$.
@@ -331,7 +331,7 @@ tibble(
 ```
 
 The CUPED variance ratio in @tbl-simulation-diagnostics is calculated from $1 - \rho^2$.
-We next compare the unadjusted estimator, CUPED, and the adjustment with $\theta = 1$.
+The unadjusted estimator, CUPED, and the adjustment with $\theta = 1$ are compared next.
 
 ```{r}
 #| label: tbl-estimates
@@ -437,7 +437,7 @@ If real data do not satisfy this condition, users cannot be selected based on wh
 The analysis population and the treatment of zero-impression users must be specified before assignment.
 
 Suppose `experiment_events` contains `user_id`, `arm`, `period`, `impression`, and `complete`.
-We first calculate each user's completion rate in both periods, then calculate $\theta$ and the adjusted outcome.
+The calculation first obtains each user's completion rate in both periods, followed by $\theta$ and the adjusted outcome.
 
 ```sql
 WITH user_metrics AS (
@@ -499,7 +499,7 @@ If the same person appears under different IDs in both arms, spillover and assig
 
 ## Counterfactuals and experimental design
 
-Across this series, we have evaluated the same ad-pause feature in several ways.
+Across this series, the same ad-pause feature has been evaluated in several ways.
 
   | Method                | Construction of the counterfactual                              | Main cost or limitation                                               |
   | --------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
