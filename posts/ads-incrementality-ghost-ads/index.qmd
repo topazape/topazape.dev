@@ -1,0 +1,221 @@
+---
+title: >-
+  Integrating Ghost Ads into an Ad-Supported Video Platform
+description: >-
+  A design exploration of Ghost Ads for AVOD, connecting ad selection, control-group measurement, and incremental conversions beyond attribution.
+draft: true
+draft-mode: unlinked
+date: "2026-09-10"
+categories: [
+  "causal-inference",
+  "incrementality",
+  "advertising",
+  "system-design",
+]
+---
+
+Attributed CV is often one of the first metrics we check when reviewing an advertising campaign.
+By linking conversions (CV) to preceding impressions or clicks, it plays an essential role in day-to-day campaign evaluation.
+Many ad-serving platforms already support this measurement.
+
+Attributed CV alone, however, does not tell us how many additional conversions an ad generated.
+It answers a different question: how many conversions followed an ad view or click?
+An Attributed CV of 1,000 means that the existing measurement rules linked 1,000 conversions to ad exposure.
+Some of those purchases would presumably have happened without the ad.
+
+This is where Incremental CV becomes a useful distinction.
+It estimates the effect of advertising by comparing conversion counts between a group served the target campaign and a group not served it, accounting for differences in group size.
+It differs in both calculation and meaning from Attributed CV, which counts conversions linked to ad exposure.
+
+What would it take to add incrementality measurement to an existing AVOD ad-serving platform that already measures Attributed CV?
+This article uses Ghost Ads as a starting point to explore a design for measuring Incremental CV separately from Attributed CV.
+The focus is not on advanced estimators, but on how to construct a control group and record its conversions.
+
+As a starting point, consider a simplified model of a typical ad-serving platform.
+Assume that it can select an ad from multiple candidates for each request, that a persistent identifier exists for each browser before ad exposure (a browser ID), and that conversions on the advertiser's website can be linked to that browser ID.
+Attribution measurement is already in place; experiment assignment and control-group outcome logging are the capabilities we would add.
+
+## Attributed CV versus Advertising Effects
+
+People who see an ad may already be more interested in the product than those who do not.
+They may watch more frequently and therefore have more opportunities to see ads.
+The serving system itself may also favor people who are more likely to convert.
+
+Subtracting the conversion rate (CVR) of unexposed users from that of exposed users therefore does not necessarily identify the effect of the ad.
+The same limitation applies to attribution that counts conversions within a specified period after an impression or click.
+It can count conversions following exposure, but it cannot determine whether the ad caused them.
+
+## A Comparison Group through Ghost Ads
+
+Ghost Ads, proposed by Johnson and colleagues, compares users exposed to the target ad in the treatment group with control users who would have been exposed had they been assigned to treatment.
+Ad selection also runs for the control group with the target ad included.
+If the target ad is selected, the system records the opportunity and serves a different ad instead.
+
+The original paper estimates Treatment on the Treated (TOT) by comparing exposed treatment users with control users who would have been exposed under treatment.
+This narrows the population relative to Intent-to-Treat (ITT), which compares everyone assigned to the experiment, reducing the dilution from unexposed users when campaign reach is low.
+Predicted Ghost Ads, by contrast, uses a model to predict exposure when it cannot be recorded directly.
+It estimates the Local Average Treatment Effect (LATE) for users whose exposure changes because of their assignment.
+In the design explored here, ad-selection results are recorded directly, so Predicted Ghost Ads is not used.
+[Johnson, Lewis, and Nubbemeyer (2016)](https://conference.nber.org/confer/2016/EoDs16/Johnson_Lewis_Nubbemeyer.pdf)
+
+For AVOD, too, it seems important to record opportunities where the target campaign would ordinarily have been selected, rather than treating all unexposed users as a control group.
+
+## The Original Paper and the Proposed Design
+
+  | Aspect                                    | Ghost Ads in the original paper                                     | Proposed AVOD design                                                                                        |
+  | ----------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+  | Identification of target-ad opportunities | Simulated auction including the target ad                           | Normal ad selection including the target campaign                                                           |
+  | Ad actually served to the control group   | Winner of the real auction excluding the target ad                  | An alternative ad selected after excluding the target campaign                                              |
+  | Recording of a ghost impression           | When the target ad wins the simulated auction                       | When playback of the alternative ad is confirmed after the target campaign was initially selected           |
+  | Required conditions                       | Matching ad-selection conditions in the real and simulated auctions | Matching selection and measurement conditions across groups, apart from the presence of the target campaign |
+
+Where the original paper records opportunities through a simulated auction, this design uses normal ad selection and the start of alternative-ad playback.
+A ghost impression is recorded for the control group when the target campaign was selected by the normal process and playback of the alternative ad has been confirmed.
+[Johnson, Lewis, and Nubbemeyer (2016)](https://conference.nber.org/confer/2016/EoDs16/Johnson_Lewis_Nubbemeyer.pdf)
+
+The key is to preserve the normal ad-selection process even when the target campaign is removed.
+If removing a candidate changes the selection outcome, the system needs to select again from the remaining candidates.
+Measurement begins when actual playback can be confirmed in both groups, rather than when the ad server selects a candidate.
+
+## Ad Selection, Randomization, and Aggregation Units
+
+The unit of ad selection, the unit of treatment assignment, and the unit of effect reporting are separate considerations.
+In this design, the system selects individual ad candidates, randomizes each browser ID--campaign pair to treatment or control, and keeps that assignment fixed throughout the study.
+Results are aggregated at the campaign level.
+
+On receiving an ad request, the system runs normal ad selection regardless of assignment.
+If the initially selected ad belongs to the experiment's target campaign, the next step depends on assignment: treatment receives that ad; for control, the system records the selection, removes the target campaign from the candidates, and selects another ad.
+Excluding the target campaign from the outset would make it impossible to identify opportunities where the campaign would normally have been selected.
+
+What the control group receives also changes the meaning of the comparison.
+
+  | Control-group experience                  | Effect estimated                                                | Main considerations                                                         |
+  | ----------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
+  | No ad                                     | Target ad versus no ad                                          | The ad-slot experience and measurement conditions may differ between groups |
+  | A neutral ad                              | Target ad versus a neutral ad                                   | Cost of sourcing neutral ads and asymmetry in ad selection                  |
+  | Reselection excluding the target campaign | Target ad versus the ad that would ordinarily be served instead | The effect also reflects the influence of competing ads                     |
+
+This design uses reselection, the option closest to the Ghost Ads approach.
+The intended comparison is the target ad versus its alternative, not the target ad versus no ad.
+
+The analysis includes browser IDs for which normal ad selection chose the target campaign and video playback was confirmed: the target ad in treatment and the alternative ad in control.
+Conversions are counted within a predefined observation window from the start of measurement and compared between groups.
+Opportunities without confirmed playback are excluded from the analysis.
+
+Because inclusion is limited to browser IDs with confirmed playback, playback-start rates and pre-assignment characteristics are checked for comparability across groups.
+
+## Measurement of Control-Group Conversions
+
+Randomizing delivery decisions is not enough to calculate Incremental CV.
+Both groups need records of experiment participation and subsequent conversions.
+
+For this linkage, the article assumes an environment in which AVOD viewing and conversion on the advertiser's website take place in the same browser and can be linked through a common browser ID.
+Linking conversions across TV apps or multiple devices is outside the scope of this article.
+
+Ad delivery and outcome measurement are treated as separate processes.
+In both groups, the start of video playback triggers the same measurement beacon.
+The beacon is sent from the target ad in treatment and the alternative ad in control, recording the browser ID, campaign, assignment, and measurement start time through the same measurement path.
+Subsequent conversions are also linked to the browser ID.
+
+The minimum logs fall into two categories: delivery opportunities and conversions.
+
+  | Log                | Main fields                                                                                                             |
+  | ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+  | Playback-start log | Browser ID, campaign ID, assignment, playback start time, indicator for actual target-ad delivery or a ghost impression |
+  | Conversion log     | Browser ID, event time, event ID for deduplication                                                                      |
+
+Recording playback starts for the control group makes it possible to count subsequent conversions without requiring exposure to or a click on the target ad.
+
+It seems preferable to keep this measurement path separate from existing attribution.
+Attribution counts conversions linked to impressions or clicks, whereas incrementality measurement also needs conversions from control users who have no target-ad impression.
+
+## Conversion Observation Window
+
+Because conversions can occur some time after ad delivery, observation continues after serving ends.
+In this design, all target conversions for each browser ID are counted within a predefined window beginning with the first confirmed playback start.
+Subsequent ad playback does not reset the start of that window.
+
+No new browser IDs are enrolled after the campaign stops serving.
+Results are aggregated once the last enrolled browser ID has completed its observation window, giving every browser ID the same observation duration.
+
+The window length is set before the experiment based on the time it takes for conversions to occur.
+The existing attribution window can inform this choice, but the starting points differ: attribution uses individual impressions or clicks, while this design uses the start of measurement for each browser ID.
+
+Google's user-based Conversion Lift also compares treatment and control conversions rather than applying standard attribution rules.
+Demand Gen supplements its results by predicting some conversions that occur after the study ends instead of observing them directly.
+This design would use no such predictive adjustment and would wait for each browser ID's observation window to end before aggregation.
+[Google Ads Help](https://support.google.com/google-ads/answer/14102450?hl=ja)
+
+## Calculation and Reporting of Incremental CV
+
+The outcome is the number of conversions within the specified observation window for each browser ID.
+Three purchases associated with the same browser ID count as three conversions.
+
+Let $N_T$ and $N_C$ denote the numbers of browser IDs in treatment and control, respectively, and $C_T$ and $C_C$ their conversion counts.
+First, calculate the difference in conversions per browser ID:
+
+$$
+  \widehat{\tau} = \frac{C_T}{N_T} - \frac{C_C}{N_C}
+$$
+
+Multiplying this difference by the number of treatment browser IDs gives Incremental CV for the treatment group:
+
+$$
+  \widehat{\Delta}_T = N_T\widehat{\tau} = C_T - \frac{N_T}{N_C}C_C
+$$
+
+Suppose treatment has 90,000 browser IDs and 900 conversions, while control has 10,000 browser IDs and 90 conversions.
+Conversions per browser ID are 0.010 and 0.009, respectively.
+Multiplying the difference by the 90,000 treatment browser IDs gives an Incremental CV of 90:
+
+$$
+  90{,}000 \times (0.010 - 0.009) = 90
+$$
+
+These 90 conversions represent the estimated increase in the treatment group from serving the target campaign rather than alternative ads.
+The estimate is not extrapolated to a broader population that includes browser IDs outside the analysis.
+
+Attributed CV counts conversions linked to ad exposure under existing rules.
+Incremental CV is estimated from the treatment--control difference in conversions per browser ID.
+Because they are calculated differently, the two metrics are reported separately.
+
+Reporting includes browser ID counts, conversion counts, conversions per browser ID for both groups, Incremental CV, and its confidence interval.
+Uncertainty is evaluated at the browser-ID level, the unit of randomization within the target campaign.
+
+## Changes in Delivery Volume under Ghost Ads
+
+Ghost Ads does not serve the target campaign to the control group.
+This design assumes that the budget freed up by those withheld deliveries is spent on treatment-group delivery through the existing pacing system, rather than left unspent.
+Treatment reach and frequency may consequently differ from normal operation without Ghost Ads.
+
+This does not in itself prevent a randomized comparison between treatment and control.
+The resulting effect, however, is estimated under delivery conditions that include Ghost Ads.
+Applying the result to normal operation requires checking the control-group share and changes in treatment reach and frequency.
+
+## From RCT Data to Delivery Policies
+
+Continued operation would generate RCT data containing pre-exposure attributes, assignment, campaign, and conversions.
+Beyond measuring the average effect, the next question is how that effect varies across browser IDs.
+
+Future CATE estimation would require the ability to reconstruct attributes as they stood at assignment.
+Using viewing behavior or clicks after ad exposure as predictors would introduce post-treatment information.
+It would therefore be useful to log not only assignment, but also a timestamp for retrieving pre-exposure features.
+
+For example, a Doubly Robust Learner (DR-Learner) could estimate the Conditional Average Treatment Effect (CATE) and inform a policy that serves the target ad to browser IDs with high predicted incremental effects when the target campaign is selected.
+Before deployment, a held-out portion of the historical randomized data could be used to evaluate the policy's expected incremental conversions offline.
+
+Creative and frequency are not randomized, however, so these data alone cannot identify the best creative or number of exposures.
+Applying CATE estimates from historical data to a later period also assumes that the audience, ads, and competitive environment have not changed substantially.
+Since a new policy would itself change budget allocation and frequency, its effect would ultimately need to be tested in an experiment.
+
+## Conclusion
+
+The proposed design assigns each browser ID--campaign pair to treatment or control and checks that assignment when normal ad selection chooses the target campaign.
+It serves the target ad to treatment and an alternative ad to control, then compares conversions between the groups.
+
+Measurement starts at video playback in the same way for both groups, and conversions are compared over a specified observation window.
+The difference in conversions per browser ID, scaled to the size of the treatment group, is what this article calls Incremental CV.
+
+Attributed CV and Incremental CV are treated as metrics that answer different questions.
+The former counts conversions following ad exposure under existing rules; the latter estimates the difference between serving the target ad and serving an alternative.
+This exploration suggests that incrementality measurement starts with designing the comparison group and the path for observing its conversions as part of the ad-serving process.
