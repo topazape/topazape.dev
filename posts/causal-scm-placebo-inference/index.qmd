@@ -1,6 +1,9 @@
 ---
 title: >-
   The Synthetic Control Method (SCM): From Choosing a Control to Estimating Weights
+description: >-
+  Build a synthetic control from data-driven donor weights, evaluate its pre-treatment fit, and quantify uncertainty with in-space placebo inference.
+image: index_files/figure-html/fig-placebo-1.png
 draft: true
 draft-mode: unlinked
 date: "2026-10-21"

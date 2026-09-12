@@ -1,6 +1,9 @@
 ---
 title: >-
   Estimating the Effect with Difference-in-Differences (DiD)
+description: >-
+  Estimate a causal effect with difference-in-differences, assess the parallel trends assumption, and see how violations bias the result.
+image: index_files/figure-html/fig-gap-1.png
 draft: true
 draft-mode: unlinked
 date: "2026-10-14"
