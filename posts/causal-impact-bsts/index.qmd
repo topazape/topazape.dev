@@ -1,5 +1,6 @@
 ---
-title: "CausalImpact: Building Counterfactuals with Bayesian Structural Time Series"
+title: >-
+  CausalImpact: Building Counterfactuals with Bayesian Structural Time Series
 description: >-
   Estimate causal effects with Bayesian structural time series, examine how CausalImpact constructs the counterfactual, and compare its assumptions with DiD and synthetic control.
 image: index_files/figure-html/fig-impact-1.png
