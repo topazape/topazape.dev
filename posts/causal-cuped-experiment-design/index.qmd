@@ -95,17 +95,18 @@ estimate_diff <- function(data, outcome, method) {
 }
 
 estimates <- bind_rows(
-  estimate_diff(experiment, y, "Unadjusted"),
+  estimate_diff(experiment, y, "Difference in means"),
   estimate_diff(experiment, y_cuped, "CUPED (estimated theta)"),
-  estimate_diff(experiment, y_theta1, "Pre-post difference (theta = 1)")
+  estimate_diff(experiment, y_theta1, "DiD (theta = 1)")
 )
 
 rho <- with(experiment, cor(x, y))
-cuped_variance_ratio <- with(experiment, var(y_cuped) / var(y))
 theta1_variance_ratio <- with(experiment, var(y_theta1) / var(y))
 se_reduction <- with(
   estimates,
-  1 - se[method == "CUPED (estimated theta)"] / se[method == "Unadjusted"]
+  1 -
+    se[method == "CUPED (estimated theta)"] /
+      se[method == "Difference in means"]
 )
 ```
 
@@ -285,8 +286,7 @@ tibble(
     "tau_logit",
     "rho",
     "theta",
-    "Formula-based CUPED variance ratio",
-    "Observed CUPED variance ratio",
+    "CUPED variance ratio",
     "Theta = 1 variance ratio",
     "CUPED standard error reduction"
   ),
@@ -294,11 +294,10 @@ tibble(
     "Fixed simulation target",
     "Fixed simulation target",
     "`mean(plogis(alpha + user_effect)) = target_baseline`",
-    "`mean(p_post_1 - p_post_0) = ate_true`",
+    "`mean(plogis(alpha + user_effect + tau_logit) - p_pre) = ate_true`",
     "`cor(x, y)`",
     "`cov(y, x) / var(x)`",
     "`1 - rho^2`",
-    "`var(y_cuped) / var(y)`",
     "`var(y_theta1) / var(y)`",
     "`1 - se_cuped / se_unadjusted`"
   ),
@@ -315,7 +314,6 @@ tibble(
     scales::number(rho, accuracy = 0.001),
     scales::number(theta, accuracy = 0.001),
     scales::percent(1 - rho^2, accuracy = 0.1),
-    scales::percent(cuped_variance_ratio, accuracy = 0.1),
     scales::percent(theta1_variance_ratio, accuracy = 0.1),
     scales::percent(se_reduction, accuracy = 0.1)
   )
@@ -331,7 +329,7 @@ tibble(
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-The variance ratio obtained from the formula $1 - \rho^2$ matches the ratio calculated directly from the adjusted sample variance, apart from rounding.
+The CUPED variance ratio in @tbl-simulation-diagnostics is calculated from $1 - \rho^2$.
 We next compare the unadjusted estimator, CUPED, and the adjustment with $\theta = 1$.
 
 ```{r}
@@ -604,18 +602,19 @@ estimate_diff <- function(data, outcome, method) {
 }
 
 estimates <- bind_rows(
-  estimate_diff(experiment, y, "Unadjusted"),
+  estimate_diff(experiment, y, "Difference in means"),
   estimate_diff(experiment, y_cuped, "CUPED (estimated theta)"),
-  estimate_diff(experiment, y_theta1, "Pre-post difference (theta = 1)")
+  estimate_diff(experiment, y_theta1, "DiD (theta = 1)")
 )
 
 # Simulation targets and calculated quantities
 rho <- with(experiment, cor(x, y))
-cuped_variance_ratio <- with(experiment, var(y_cuped) / var(y))
 theta1_variance_ratio <- with(experiment, var(y_theta1) / var(y))
 se_reduction <- with(
   estimates,
-  1 - se[method == "CUPED (estimated theta)"] / se[method == "Unadjusted"]
+  1 -
+    se[method == "CUPED (estimated theta)"] /
+      se[method == "Difference in means"]
 )
 
 tibble(
@@ -625,8 +624,7 @@ tibble(
   tau_logit,
   rho,
   theta,
-  formula_cuped_variance_ratio = 1 - rho^2,
-  cuped_variance_ratio,
+  cuped_variance_ratio = 1 - rho^2,
   theta1_variance_ratio,
   se_reduction
 )
