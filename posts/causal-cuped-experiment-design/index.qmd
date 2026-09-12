@@ -1,5 +1,6 @@
 ---
-title: "Improving A/B Test Power with CUPED"
+title: >-
+  Improving A/B Test Power with CUPED
 description: >-
   How CUPED uses pre-experiment outcomes to reduce variance and improve the precision of randomized experiments.
 image: index_files/figure-html/fig-estimates-1.png
