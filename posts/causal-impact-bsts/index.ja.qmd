@@ -1,0 +1,439 @@
+---
+title: "CausalImpact：ベイズ構造時系列による反実仮想の構築"
+draft: true
+draft-mode: unlinked
+date: "2026-10-28"
+categories: ["causal-inference", "quasi-experimental-design", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+att_true <- 0.01049 # ATT の真値。合成データ設計の記事の生成式から導出 (+1.049 pp)
+
+panel <- read_csv(
+  "../../data/causal-synthetic-data-design/panel_parallel.csv",
+  show_col_types = FALSE
+)
+```
+
+本記事では、iOS の完再生率がもつ時間構造を状態空間モデルで表し、処置がなかった場合の完再生率の推移を予測することで因果効果を推定します。用いる手法はベイズ構造時系列 (Bayesian structural time series; BSTS) で、実装には [Brodersen et al. (2015)](https://doi.org/10.1214/14-AOAS788) の {CausalImpact} を使用します。
+
+データには、[合成データ設計の記事](/posts/causal-synthetic-data-design/)で生成した、11 デバイス、243 日分の日次広告完再生率を用います。iOS のみ 2026-06-01 に広告一時停止機能をリリースしており、処置群における平均処置効果 (average treatment effect on the treated; ATT) の真値は +1.049 パーセントポイント (percentage point; pp) です。今回も Causal Impact 手法の評価のため、事前期間 182 日と事後期間 61 日のデータをすべて使用することにします。
+
+この記事では、以下を扱います。
+
+1. BSTS の状態空間モデルと、spike-and-slab 事前分布による対照系列の選択を定義します。
+2. {CausalImpact} を用いて、時点別効果と事後期間の平均効果を推定します。
+3. 差分の差分法 (difference-in-differences; DiD)、[合成コントロール法 (synthetic control method; SCM)](/posts/causal-scm-placebo-inference/)、CausalImpact の結果と仮定を比較します。
+
+## 状態空間モデル
+
+BSTS は、処置ユニット自身の時間構造と対照系列への回帰を組み合わせた状態空間モデルです。ローカルレベルと曜日成分が iOS の時間構造を、回帰成分が対照系列と共有する変動を表します。
+
+iOS の日次完再生率を $y_t$、10 種類の対照デバイスの完再生率を並べたベクトルを $\mathbf{x}_t$ とします。$t = 1, \dots, 243$ は 2025-12-01 から 2026-07-31 までの日付に対応し、リリース日 $T$ (2026-06-01) は $t = 183$ にあたります。観測方程式は次のとおりです。
+
+$$
+  y_t = \mu_t + \gamma_t + \boldsymbol{\beta}^\top \mathbf{x}_t
+        + \varepsilon_t, \qquad \varepsilon_t \sim N(0, \sigma_\varepsilon^2)
+$$
+
+  | 成分                                            | 状態の遷移                                                                                          | 説明する変動                                         |
+  | ----------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+  | ローカルレベル $\mu_t$                          | $\mu_{t+1} = \mu_t + \eta_t, \quad \eta_t \sim N(0, \sigma_\eta^2)$                                 | iOS 自身の局所的な変動                               |
+  | 曜日成分 $\gamma_t$                             | $\gamma_{t+1} = -\sum_{s=0}^{5} \gamma_{t-s} + \omega_t, \quad \omega_t \sim N(0, \sigma_\omega^2)$ | iOS 自身の曜日周期（7 日間の和の期待値は 0）         |
+  | 回帰成分 $\boldsymbol{\beta}^\top \mathbf{x}_t$ | なし（$\boldsymbol{\beta}$ は時間不変）                                                             | 対照系列と共有する変動（観測されない共通原因を含む） |
+
+対照系列は処置の影響を受けてはいけません。今回は iOS アプリ内の UI 変更であるため、他のデバイスへの波及は考えにくいと判断できます。
+
+回帰係数 $\boldsymbol{\beta}$ には spike-and-slab 事前分布を置きます。これは、0 に集中する点質量 (spike) と裾の広い連続分布 (slab) を組み合わせたもので、各対照系列を回帰に含めるかどうかの不確実性を表します。SCM もデータから対照の重みを決めますが、その役割と制約は BSTS とは異なります。
+
+  |                  | SCM の凸結合                                              | BSTS の回帰成分                           |
+  | ---------------- | --------------------------------------------------------- | ----------------------------------------- |
+  | 反実仮想の情報源 | donor の系列のみ                                          | 処置ユニット自身の状態成分 + 対照系列     |
+  | 係数の制約       | $w_j \geq 0$、$\sum_j w_j = 1$                            | なし（符号も和も自由）                    |
+  | 水準差の扱い     | 切片がなく、水準そのものを凸包の内側で再現                | ローカルレベル $\mu_t$ が吸収             |
+  | 対照系列の扱い   | 制約付き最適化で重みを点推定（重みが 0 になることもある） | spike-and-slab 事前分布による確率的な選択 |
+  | 選択の不確実性   | 表現されない（重みは 1 組の点推定）                       | 係数の事後分布として表現される            |
+
+BSTS には凸結合の制約がなく、水準差も $\mu_t$ が吸収するため、処置ユニットが donor の凸包内にある必要はありません。一方、外挿を許容するため、事前期間に観測されていない範囲の予測はモデル構造と事前分布に強く依存します。
+
+## 反実仮想の事後予測
+
+事前期間 182 日の $(y_t, \mathbf{x}_t)$ からモデルの事後分布を求めます。事後期間 61 日については、観測された対照系列 $\mathbf{x}_t$ だけを使って $y_t^{(0)}$ の予測分布を計算し、これを処置がなかった場合の完再生率の反実仮想とします。{CausalImpact} では、事後期間の $y_t$ を欠測値としてモデルを全期間に当てはめ、その事後予測分布を取り出します。この予測には、回帰係数 $\boldsymbol{\beta}$ と状態成分の構造が処置後も安定しているという仮定が必要です。これは、DiD における平行トレンドの仮定や、SCM における「事前期間の要因構造が事後も続く」という仮定に対応します。いずれも、事前期間の当てはまりだけでは検証できません。
+
+時点別効果を $\tau_t = y_t - y_t^{(0)}$、事後期間の平均効果を
+
+$$
+  \bar{\tau} = \frac{1}{61}\sum_{t=183}^{243}\tau_t
+$$
+
+と定義します。反実仮想 $y_t^{(0)}$ の事後予測サンプルごとに、実測値との差とその期間平均を計算することで、$\tau_t$ と $\bar{\tau}$ の事後分布が得られます。本記事では、その 2.5% 分位点から 97.5% 分位点までを 95% 事後区間とします。
+
+時点別効果の区間は、原理的にはリリース日から時間が経つほど広がります。ローカルレベルでは、予測分散に $\sigma_\eta^2$ が 1 日ごとに加わるためです。ただし、$\sigma_\eta$ が観測ノイズ $\sigma_\varepsilon$ に比べて十分に小さければ、61 日程度の期間では区間の広がりがほとんど見えないこともあります。
+
+{CausalImpact} は、時点別効果、事後期間の平均効果、累積効果 (`cumulative`) を出力します。分母が日ごとに異なる完再生率を合計しても意味のある解釈ができないため、今回は累積効果は使用せず、$\tau_t$ と $\bar{\tau}$ のみ確認します。
+
+## {CausalImpact} による推定
+
+{CausalImpact} のデフォルトモデルはローカルレベルと回帰成分からなり、季節成分を含みません (`nseasons = 1`)。本データには曜日周期があるため、`nseasons = 7` を指定します。マルコフ連鎖モンテカルロ法 (Markov chain Monte Carlo; MCMC) のサンプル数は 5,000 とし、その他はデフォルト設定を使用します。なお、{CausalImpact} は {bsts} で用いる乱数シードを内部で 1 に固定します。
+
+入力データは、1 列目を日付、2 列目を iOS、3 列目以降を 10 種類の対照デバイスとし、事前期間と事後期間を日付で指定します。
+
+```{r}
+#| label: did-61
+#| include: false
+
+# DiD の記事と同じ 2×2 推定量（iOS 対 Android）を事後 61 日窓で計算する
+did_61 <- panel |>
+  filter(device %in% c("ios", "android")) |>
+  mutate(period = if_else(post, "post", "pre")) |>
+  summarise(
+    complete = sum(complete),
+    impression = sum(impression),
+    .by = c(device, period)
+  ) |>
+  mutate(
+    rate = complete / impression,
+    var_rate = rate * (1 - rate) / impression
+  ) |>
+  pivot_wider(
+    names_from = period,
+    values_from = c(rate, var_rate),
+    id_cols = device
+  ) |>
+  mutate(
+    diff = rate_post - rate_pre,
+    var_diff = var_rate_post + var_rate_pre,
+    .keep = "unused"
+  ) |>
+  pivot_wider(names_from = device, values_from = c(diff, var_diff)) |>
+  mutate(
+    estimate = diff_ios - diff_android,
+    se = sqrt(var_diff_ios + var_diff_android),
+    ci_lower = estimate - qnorm(0.975) * se,
+    ci_upper = estimate + qnorm(0.975) * se,
+    .keep = "none"
+  )
+```
+
+```{r}
+#| label: impact-fit
+#| include: false
+#| cache: true
+
+rates <- panel |>
+  mutate(device = str_replace_all(device, "-", "_")) |>
+  pivot_wider(
+    id_cols = date,
+    names_from = device,
+    values_from = complete_rate
+  ) |>
+  arrange(date) |>
+  relocate(date, ios) # 1列目 date、2列目 = y (ios)
+
+pre_period <- lubridate::ymd(c("2025-12-01", "2026-05-31"))
+post_period <- lubridate::ymd(c("2026-06-01", "2026-07-31"))
+
+# ローカルレベル + 曜日成分 (nseasons = 7) + 回帰成分
+impact <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(nseasons = 7, niter = 5000)
+)
+
+# 参照用：曜日成分なしのデフォルトモデル（包含確率の比較にのみ使用）
+impact_noseason <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(niter = 5000)
+)
+
+avg <- impact$summary |>
+  as_tibble(rownames = "period") |>
+  filter(period == "Average")
+```
+
+```{r}
+#| label: tbl-impact
+#| tbl-cap: >-
+#|   事後期間の平均値と平均効果の推定.
+#|   実測値, 反実仮想, 効果はいずれも pp で表示.
+#| echo: false
+#| message: false
+
+avg |>
+  select(
+    Actual,
+    Pred,
+    Pred.lower,
+    Pred.upper,
+    AbsEffect,
+    AbsEffect.lower,
+    AbsEffect.upper
+  ) |>
+  gt::gt() |>
+  gt::fmt_number(decimals = 3, scale_by = 100) |>
+  gt::cols_label(
+    Actual = "実測",
+    Pred = "事後平均",
+    Pred.lower = "下限",
+    Pred.upper = "上限",
+    AbsEffect = "事後平均",
+    AbsEffect.lower = "下限",
+    AbsEffect.upper = "上限"
+  ) |>
+  gt::tab_spanner(
+    label = "反実仮想",
+    columns = c(Pred, Pred.lower, Pred.upper)
+  ) |>
+  gt::tab_spanner(
+    label = gt::md("効果 $\\bar{\\tau}$"),
+    columns = c(AbsEffect, AbsEffect.lower, AbsEffect.upper)
+  ) |>
+  gt::cols_align(align = "right") |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+@tbl-impact に、事後期間の平均値と平均効果を示します。$\bar{\tau}$ の事後平均と真値 +1.049 pp との差は `r scales::number(100 * (avg$AbsEffect - att_true), accuracy = 0.001, style_positive = "plus")` pp で、95% 事後区間は真値を含んでいます。
+
+```{r}
+#| label: fig-impact
+#| fig-cap: >-
+#|   上段：iOS の完再生率の実測値（実線）と反実仮想の事後予測（破線）.
+#|   帯は 95% 事後予測区間.
+#|   下段：時点別効果 $\tau_t$ と 95% 事後区間.
+#|   縦の破線はリリース日.
+#| echo: false
+#| message: false
+#| warning: false
+
+plot(impact, c("original", "pointwise")) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(strip.background = element_blank())
+```
+
+@fig-impact の上段を見ると、リリース後の実測値は反実仮想を上回っています。下段の区間幅は、61 日間を通してほぼ一定です。ローカルレベルの $\sigma_\eta$ が観測ノイズに比べて小さく、予測期間が長くなることによる分散の増加が目立たないためです。時点別効果の区間には日次の二項ノイズ（標準偏差は約 0.4 pp）が含まれるため、平均効果の区間よりも広くなります。この図では、個々の日の効果を判定するのではなく、効果が期間を通して持続しているかを確認します。
+
+spike-and-slab 事前分布の期待モデルサイズは 3 で、10 本の対照系列それぞれの事前包含確率は 30% です。
+
+```{r}
+#| label: tbl-inclusion
+#| tbl-cap: >-
+#|   回帰係数の事後包含確率（係数が 0 でない事後サンプルの割合）.
+#|   バーンインは対数尤度に基づいて選択.
+#|   事前包含確率は両モデルとも 30%.
+#| echo: false
+#| message: false
+
+coef_draws <- function(fit, model_name) {
+  burn <- bsts::SuggestBurn(0.1, fit$model$bsts.model)
+
+  fit$model$bsts.model$coefficients[-seq_len(burn), , drop = FALSE] |>
+    as_tibble() |>
+    mutate(model = model_name, draw = row_number(), .before = 1)
+}
+
+draws <- bind_rows(
+  coef_draws(impact, "seasonal"),
+  coef_draws(impact_noseason, "noseason")
+)
+
+inclusion <- draws |>
+  pivot_longer(-c(model, draw), names_to = "series", values_to = "beta") |>
+  filter(series != "(Intercept)") |>
+  summarise(inclusion = mean(beta != 0), .by = c(model, series)) |>
+  mutate(series = str_replace_all(series, "_", "-"))
+
+inclusion |>
+  pivot_wider(names_from = model, values_from = inclusion) |>
+  arrange(desc(noseason)) |>
+  gt::gt() |>
+  gt::fmt_percent(columns = -series, decimals = 1) |>
+  gt::cols_label(
+    series = "対照系列",
+    seasonal = "曜日成分あり",
+    noseason = "曜日成分なし（デフォルト）"
+  ) |>
+  gt::cols_align(align = "right", columns = -series) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+@tbl-inclusion に、回帰係数の事後包含確率を示します。曜日成分ありのモデルでは、全系列の事後包含確率が事前包含確率を大きく下回っています。
+
+この結果は生成過程と整合しています。全デバイスに共通するのは曜日周期とトレンドだけで、日次の二項ノイズはデバイス間で独立です。曜日成分とローカルレベルが前者を捉えると、対照系列で説明できる共有変動はほとんど残りません。一方、曜日成分なしのモデルでは、Android の包含確率が相対的に高くなり、回帰成分が曜日周期を代わりに捉えています。
+
+SCM は凸結合を作るため、必ず対照を使用します。一方、BSTS が対照を選ぶのは、状態成分では説明できない共有変動がある場合だけです。実データでも包含確率が低い場合、対照系列は反実仮想の予測にあまり寄与していません。そのため、反実仮想は主に、処置ユニット自身の処置前のトレンドや周期性を処置後まで延長して予測したものと解釈できます。
+
+## 手法の比較
+
+3 つの手法を、事後 61 日間の結果で比較します。[DiD の記事](/posts/causal-did-parallel-trends/)では、運用上の意思決定に合わせて 7 日窓を使用しましたが、ここでは同じ推定量を 61 日窓で計算し直します。SCM には、[同手法の記事](/posts/causal-scm-placebo-inference/)で得られた値を用います。
+
+```{r}
+#| label: tbl-comparison
+#| tbl-cap: >-
+#|   同一データ (seed = 1) に対する 3 手法の事後期間平均の推定 (pp).
+#|   ATT の真値は +1.049 pp.
+#| echo: false
+#| message: false
+
+estimates <- bind_rows(
+  "DiD（61 日窓）" = did_61 |>
+    select(estimate, lower = ci_lower, upper = ci_upper),
+  "SCM" = tibble(estimate = 0.0108),
+  "CausalImpact" = avg |>
+    select(
+      estimate = AbsEffect,
+      lower = AbsEffect.lower,
+      upper = AbsEffect.upper
+    ),
+  .id = "method"
+)
+
+notes <- tribble(
+  ~method        , ~interval                           , ~assumption                 ,
+  "DiD（61 日窓）"   , "二項分散に基づく漸近正規近似の 95% 信頼区間"          , "平行トレンド"                    ,
+  "SCM"          , "なし（in-space placebo の順位、p = 1/11）" , "事前期間の要因構造が事後も続く"           ,
+  "CausalImpact" , "反実仮想の事後予測に基づく 95% 事後区間"            , "状態成分の構造と対照系列との関係が処置の前後で安定"
+)
+
+comparison <- estimates |> left_join(notes, by = "method")
+
+comparison |>
+  gt::gt() |>
+  gt::fmt_number(
+    columns = c(estimate, lower, upper),
+    rows = method != "SCM",
+    decimals = 3,
+    scale_by = 100
+  ) |>
+  gt::fmt_number(
+    columns = estimate,
+    rows = method == "SCM",
+    decimals = 2,
+    scale_by = 100
+  ) |>
+  gt::sub_missing(columns = c(lower, upper), missing_text = "—") |>
+  gt::cols_label(
+    method = "手法",
+    estimate = "推定値",
+    lower = "下限",
+    upper = "上限",
+    interval = "区間の構成",
+    assumption = "反実仮想を支える仮定"
+  ) |>
+  gt::cols_align(align = "right", columns = c(estimate, lower, upper)) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+いずれの点推定も真値に近い値となっていますが、これは生成過程が各手法の仮定を満たすように設計されているためです。実データでは、平行トレンド、要因構造の継続、対照系列との関係の安定性が事後期間にも成り立つかどうかを検証できません。事前トレンドやモデルの当てはまりは判断材料にはなりますが、仮定の成立を証明するものではありません。
+
+なかでも今回の CausalImpact の推定は、対照系列との関係よりも、iOS の処置前のトレンドや曜日周期が処置後も続くという仮定に強く依存しています。
+
+また、推論の意味も手法ごとに異なります。DiD は二項分散に基づく漸近正規近似による信頼区間、SCM は $1/11$ 刻みの順位、CausalImpact はモデルと事前分布に条件づけた事後区間です。ただし、検証できない仮定に基づいて反実仮想を構成する点は、いずれの手法にも共通しています。BSTS は、処置ユニット自身の時間構造と対照系列を組み合わせ、反実仮想の不確実性を事後予測区間として表現できます。ただし、その区間はモデルと事前分布に条件づいたものであり、因果効果の妥当性を自動的に保証するものではありません。推定結果を解釈する際には、どの成分が反実仮想を支えているのかを確認し、その構造が処置後も安定しているという仮定を明示することが重要です。
+
+## Rコード
+
+```r
+library(tidyverse)
+
+date_treat <- lubridate::ymd("2026-06-01")
+att_true <- 0.01049
+
+panel <- read_csv("panel_parallel.csv")
+
+# デバイス名のハイフンは formula で扱いにくいため、下線に置き換える
+# 1 列目が日付、2 列目が処置ユニット (iOS)、3 列目以降が 10 種類の対照デバイス
+rates <- panel |>
+  mutate(device = str_replace_all(device, "-", "_")) |>
+  pivot_wider(
+    id_cols = date,
+    names_from = device,
+    values_from = complete_rate
+  ) |>
+  arrange(date) |>
+  relocate(date, ios) # 1列目 date、2列目 = y (ios)
+
+pre_period <- lubridate::ymd(c("2025-12-01", "2026-05-31"))
+post_period <- lubridate::ymd(c("2026-06-01", "2026-07-31"))
+
+# --- ローカルレベル + 曜日成分 + 回帰成分（seed は CausalImpact が内部で 1 に固定）---
+
+impact <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(nseasons = 7, niter = 5000)
+)
+
+# 事後期間の平均効果と 95% 事後区間（累積効果の行は使用しない）
+impact$summary["Average", c("AbsEffect", "AbsEffect.lower", "AbsEffect.upper")]
+
+# 上段：実測値と反実仮想、下段：時点別効果（累積効果のパネルは使用しない）
+plot(impact, c("original", "pointwise"))
+
+# --- 参照用：曜日成分なしのデフォルトモデル ---
+
+impact_noseason <- CausalImpact::CausalImpact(
+  rates,
+  pre.period = pre_period,
+  post.period = post_period,
+  model.args = list(niter = 5000)
+)
+
+# 対数尤度に基づくバーンインを除外し、回帰係数の事後包含確率を計算
+coef_draws <- function(fit, model_name) {
+  burn <- bsts::SuggestBurn(0.1, fit$model$bsts.model)
+
+  fit$model$bsts.model$coefficients[-seq_len(burn), , drop = FALSE] |>
+    as_tibble() |>
+    mutate(model = model_name, draw = row_number(), .before = 1)
+}
+
+bind_rows(
+  coef_draws(impact, "seasonal"),
+  coef_draws(impact_noseason, "noseason")
+) |>
+  pivot_longer(-c(model, draw), names_to = "series", values_to = "beta") |>
+  filter(series != "(Intercept)") |>
+  summarise(inclusion = mean(beta != 0), .by = c(model, series))
+
+# --- 比較用：DiD（iOS 対 Android）を事後 61 日窓で計算 ---
+
+panel |>
+  filter(device %in% c("ios", "android")) |>
+  mutate(period = if_else(post, "post", "pre")) |>
+  summarise(
+    complete = sum(complete),
+    impression = sum(impression),
+    .by = c(device, period)
+  ) |>
+  mutate(
+    rate = complete / impression,
+    var_rate = rate * (1 - rate) / impression
+  ) |>
+  pivot_wider(
+    names_from = period,
+    values_from = c(rate, var_rate),
+    id_cols = device
+  ) |>
+  mutate(
+    diff = rate_post - rate_pre,
+    var_diff = var_rate_post + var_rate_pre,
+    .keep = "unused"
+  ) |>
+  pivot_wider(names_from = device, values_from = c(diff, var_diff)) |>
+  mutate(
+    estimate = diff_ios - diff_android,
+    se = sqrt(var_diff_ios + var_diff_android),
+    ci_lower = estimate - qnorm(0.975) * se,
+    ci_upper = estimate + qnorm(0.975) * se,
+    .keep = "none"
+  )
+```
