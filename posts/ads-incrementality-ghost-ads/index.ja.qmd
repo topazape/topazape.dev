@@ -2,7 +2,7 @@
 title: "広告付き動画配信基盤への Ghost Ads の組み込み"
 draft: true
 draft-mode: unlinked
-date: "2026-09-10"
+date: "2026-11-17"
 categories: [
   "causal-inference",
   "incrementality",
