@@ -5,7 +5,7 @@ description: >-
   A design exploration of Ghost Ads for AVOD, connecting ad selection, control-group measurement, and incremental conversions beyond attribution.
 draft: true
 draft-mode: unlinked
-date: "2026-09-10"
+date: "2026-11-17"
 categories: [
   "causal-inference",
   "incrementality",
@@ -197,11 +197,11 @@ Applying the result to normal operation requires checking the control-group shar
 Continued operation would generate RCT data containing pre-exposure attributes, assignment, campaign, and conversions.
 Beyond measuring the average effect, the next question is how that effect varies across browser IDs.
 
-Future CATE estimation would require the ability to reconstruct attributes as they stood at assignment.
+Future Conditional Average Treatment Effect (CATE) estimation would require the ability to reconstruct attributes as they stood at assignment.
 Using viewing behavior or clicks after ad exposure as predictors would introduce post-treatment information.
 It would therefore be useful to log not only assignment, but also a timestamp for retrieving pre-exposure features.
 
-For example, a Doubly Robust Learner (DR-Learner) could estimate the Conditional Average Treatment Effect (CATE) and inform a policy that serves the target ad to browser IDs with high predicted incremental effects when the target campaign is selected.
+For example, a Doubly Robust Learner (DR-Learner) could estimate the CATE and inform a policy that serves the target ad to browser IDs with high predicted incremental effects when the target campaign is selected.
 Before deployment, a held-out portion of the historical randomized data could be used to evaluate the policy's expected incremental conversions offline.
 
 Creative and frequency are not randomized, however, so these data alone cannot identify the best creative or number of exposures.
