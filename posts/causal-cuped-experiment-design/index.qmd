@@ -1,0 +1,631 @@
+---
+title: "Improving A/B Test Power with CUPED"
+description: >-
+  How CUPED uses pre-experiment outcomes to reduce variance and improve the precision of randomized experiments.
+image: index_files/figure-html/fig-estimates-1.png
+draft: true
+draft-mode: unlinked
+date: "2026-11-04"
+categories: ["causal-inference", "experimental-design", "statistics"]
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+
+set.seed(2026)
+
+n_users <- 4000
+n_impression <- 100
+target_baseline <- 0.935
+ate_true <- 0.01049
+sd_user <- 0.5
+
+user_effect <- rnorm(n_users, mean = 0, sd = sd_user)
+
+# Find the intercept that gives these 4,000 users a mean completion probability of 93.5%
+alpha <- uniroot(
+  \(alpha) mean(plogis(alpha + user_effect)) - target_baseline,
+  interval = c(0, 10)
+)$root
+
+p_pre <- plogis(alpha + user_effect)
+
+# Find the logit-scale effect that gives this finite sample an ATE of +1.049 pp
+tau_logit <- uniroot(
+  \(tau) mean(plogis(alpha + user_effect + tau) - p_pre) - ate_true,
+  interval = c(0, 1)
+)$root
+
+p_post_0 <- p_pre
+p_post_1 <- plogis(alpha + user_effect + tau_logit)
+treated <- sample(c(
+  rep(FALSE, n_users / 2),
+  rep(TRUE, n_users / 2)
+))
+
+experiment <- tibble(
+  user_id = seq_len(n_users),
+  treated,
+  pre_complete = rbinom(n_users, n_impression, p_pre),
+  post_complete = rbinom(
+    n_users,
+    n_impression,
+    if_else(treated, p_post_1, p_post_0)
+  )
+) |>
+  mutate(
+    x = pre_complete / n_impression,
+    y = post_complete / n_impression
+  )
+
+theta <- with(experiment, cov(y, x) / var(x))
+x_bar <- with(experiment, mean(x))
+
+experiment <- experiment |>
+  mutate(
+    y_cuped = y - theta * (x - x_bar),
+    y_theta1 = y - (x - x_bar)
+  )
+
+estimate_diff <- function(data, outcome, method) {
+  by_arm <- data |>
+    summarise(
+      outcome_mean = mean({{ outcome }}),
+      variance = var({{ outcome }}),
+      n = n(),
+      .by = treated
+    )
+
+  estimate <- with(
+    by_arm,
+    outcome_mean[treated] - outcome_mean[!treated]
+  )
+  se <- with(by_arm, sqrt(sum(variance / n)))
+
+  tibble(
+    method,
+    estimate,
+    se,
+    lower = estimate - qnorm(0.975) * se,
+    upper = estimate + qnorm(0.975) * se
+  )
+}
+
+estimates <- bind_rows(
+  estimate_diff(experiment, y, "Difference in means"),
+  estimate_diff(experiment, y_cuped, "CUPED (estimated theta)"),
+  estimate_diff(experiment, y_theta1, "DiD (theta = 1)")
+)
+
+rho <- with(experiment, cor(x, y))
+theta1_variance_ratio <- with(experiment, var(y_theta1) / var(y))
+se_reduction <- with(
+  estimates,
+  1 -
+    se[method == "CUPED (estimated theta)"] /
+      se[method == "Difference in means"]
+)
+```
+
+Up to the [previous article](/posts/causal-impact-bsts/), we estimated the effect of an ad-pause feature released only on iOS using difference-in-differences (DiD), the synthetic control method (SCM), and CausalImpact.
+
+But there has been a catch in this example from the start.
+Ad pause is a UI feature.
+Before release, we could randomly split iOS users into two groups, enable the feature for only one group, and run an A/B test.
+There would be no need to construct a counterfactual from Android or other devices.
+
+Of course, running an experiment does not make every part of the analysis easy.
+Here, the completion rate is already high, and the expected improvement is only about one percentage point (pp hereafter).
+The variance of the estimate therefore matters.
+Even with proper randomization, a wide confidence interval can obscure a small effect.
+
+CUPED (Controlled-experiment Using Pre-Experiment Data) addresses this problem by using pre-experiment data to reduce the variance of a randomized comparison.
+In this article, we redesign the same ad-pause feature as a user-level experiment and examine how CUPED improves estimation precision.
+
+## Experimental design with randomized comparison
+
+The experimental unit is an iOS user.
+Eligible users are randomly assigned 1:1.
+The treatment group receives the ad-pause feature, while the control group keeps the existing UI.
+Assignment remains fixed throughout the experiment.
+
+The outcome $Y_i$ is each user's completion rate during the experiment: completed ad views divided by impressions.
+Let $Y_i(0)$ and $Y_i(1)$ denote user $i$'s potential outcomes without and with treatment, and let $Z_i \in \{0,1\}$ denote assignment.
+The estimand is the average treatment effect (ATE).
+
+$$
+  \tau = \mathbb{E}\left[ Y_i(1) - Y_i(0) \right]
+$$
+
+For each user, we observe only the potential outcome corresponding to the assigned condition.
+
+$$
+  Y_i = Z_iY_i(1) + (1 - Z_i)Y_i(0)
+$$
+
+Even so, the difference in group means,
+
+$$
+  \hat{\tau}_{\text{diff}} = \bar{Y}_{Z=1} - \bar{Y}_{Z=0},
+$$
+
+estimates the ATE.
+Randomization makes $Z_i$ independent of the potential outcomes, so the iOS users in the control group provide the comparison for what would have happened at the same time without the feature.
+We no longer need to infer the counterfactual from observational data.
+This removes the need for the parallel-trends assumption in DiD, the assumption in SCM that the factor structure remains stable after treatment, and the assumption in CausalImpact that the model structure remains stable.
+
+Still, the word "randomized" alone does not guarantee a valid experiment.
+At minimum, the implementation and logs must verify the following:
+
+- Assignment remains fixed throughout the experiment, and no user appears in both groups.
+- The treatment does not spill over to the control group.
+- Users are not excluded from the analysis based on behavior observed after assignment.
+
+As in the [first article in this series](/posts/causal-synthetic-data-design/), we simplify the setting by assuming that the ad-pause feature does not affect the number of impressions.
+In practice, pausing may keep users watching and increase their subsequent impressions.
+If so, impressions should be examined as a separate outcome alongside the completion rate.
+
+## Estimation error after randomization
+
+Randomization guarantees that, across repeated experiments, the expected difference in group means equals the true ATE.
+It does not make the treatment and control groups identical in any one experiment.
+If users who almost always watch ads to completion happen to be overrepresented in the treatment group, its completion rate will be higher even when the feature has no effect.
+A larger sample reduces such chance imbalances, but both the experimental duration and the number of eligible users are limited.
+
+This is where the pre-experiment completion rate becomes useful.
+Users who usually have a high completion rate are likely to remain high during the experiment.
+When the two measures are correlated, the pre-experiment outcome can remove some of the pre-existing variation between users and reduce the variance of the estimate.
+
+## Variance reduction with CUPED
+
+Let $Y$ be the completion rate during the experiment and $X$ the same outcome measured before the experiment.
+Substantively, $X$ is a lagged outcome; in CUPED, it is used as a pre-treatment covariate.
+Here, $X$ is calculated over a pre-experiment window of the same length as the experiment, and the outcome is adjusted as follows:
+
+$$
+  Y_{\text{adj}} = Y - \theta(X - \bar{X})
+$$
+
+Because $X$ is determined before treatment, it cannot be affected by treatment.
+Here, $\bar{X}$ is the pre-experiment mean across all users, so $X - \bar{X}$ measures how far each user's pre-experiment outcome lies from that mean.
+The adjustment lowers $Y$ for users with an above-average $X$ and raises it for users with a below-average $X$, removing variation that was already present before the experiment.
+
+Applying the adjustment to both groups gives the following ATE estimator:
+
+$$
+  \hat{\tau}_{\text{CUPED}} = (\bar{Y}_1 - \theta\bar{X}_1)
+                              - (\bar{Y}_0 - \theta\bar{X}_0)
+$$
+
+The adjusted outcome can also be written as $Y_{\mathrm{adj}} = Y - \theta X + \theta\bar{X}$.
+The final term, $\theta\bar{X}$, is common to every user and therefore cancels when we take the difference between group means.
+Under randomization, the expected pre-experiment difference $\bar{X}_1 - \bar{X}_0$ is zero.
+Holding $\theta$ fixed, the adjustment therefore leaves the expected ATE unchanged.
+
+The remaining question is how much to subtract, as determined by $\theta$.
+CUPED, introduced to online experiments by [Deng et al. (2013)](https://doi.org/10.1145/2433396.2433413), uses the value that minimizes the variance of the adjusted outcome.
+Expanding the variance gives
+
+$$
+  \begin{aligned}
+    \mathrm{Var}(Y_{\text{adj}})
+     & = \mathrm{Var}(Y - \theta X)                \\
+     & = \mathrm{Var}(Y) + \theta^2\mathrm{Var}(X)
+    -2\theta\mathrm{Cov}(Y,X).
+  \end{aligned}
+$$
+
+Differentiating with respect to $\theta$ gives the optimal coefficient:
+
+$$
+  \theta^* = \frac{\mathrm{Cov}(Y,X)}{\mathrm{Var}(X)}.
+$$
+
+Writing the correlation between $X$ and $Y$ as $\rho$, the adjusted variance becomes
+
+$$
+  \mathrm{Var}(Y_{\text{adj}}) = \mathrm{Var}(Y)(1 - \rho^2).
+$$
+
+The stronger the correlation between pre-experiment and in-experiment completion rates, the greater the variance reduction from CUPED.
+For example, if $\rho = 0.6$, the variance falls to $1 - 0.6^2 = 0.64$ of its original value.
+The sample size required for the same power likewise falls to roughly 64%.
+Conversely, CUPED offers little improvement when the correlation is weak because, for example, the pre-experiment window is short or the metric fluctuates substantially from day to day.
+
+The population value $\theta^*$ is unknown, so in practice we estimate it from the covariance and variance in the experimental data.
+Here, we estimate $\theta$ using the treatment and control groups together.
+
+## Evaluation with synthetic user-level data
+
+The device-by-day panel used so far does not contain user IDs, so it cannot provide user-level pre-experiment outcomes.
+We therefore generate a separate synthetic user-level dataset for an experiment on the same ad-pause feature.
+
+We assign 4,000 users equally between treatment and control and give each user 100 impressions before and during the experiment.
+Under this simplification, the mean of the user-level completion rates equals the completion rate calculated across all impressions.
+In practice, users have different numbers of impressions.
+The estimand must therefore be specified in advance: either an equally weighted mean of user-level rates or total completions divided by total impressions.
+
+To represent persistent differences in users' propensity to complete an ad, we share a user-specific effect $u_i \sim N(0,0.5^2)$ across the pre-experiment and experimental periods.
+The standard deviation of 0.5 is not estimated from real data; it is chosen to induce enough correlation to make the effect of CUPED visible.
+Completion rates are generated as follows:
+
+$$
+  \begin{aligned}
+    X_i                       & \sim \frac{1}{100}\mathrm{Binomial}(100,p_i^{(0)}),   \\
+    Y_i                       & \sim \frac{1}{100}\mathrm{Binomial}(100,p_i^{(Z_i)}), \\
+    \mathrm{logit}(p_i^{(0)}) & = \alpha + u_i,                                       \\
+    \mathrm{logit}(p_i^{(1)}) & = \alpha + u_i + \tau_{\mathrm{logit}}.
+  \end{aligned}
+$$
+
+The two externally specified inputs are the 93.5% baseline and the +1.049 pp ATE, chosen to match the [first article in this series](/posts/causal-synthetic-data-design/).
+We first generate $u_i$ for all 4,000 users and solve for the intercept $\alpha$ that makes their mean completion probability 93.5%.
+We then solve for $\tau_{\mathrm{logit}}$ so that the ATE among the same 4,000 users is +1.049 pp.
+Thus, rather than being fixed directly, $\alpha$ and $\tau_{\mathrm{logit}}$ are determined by the generated user population and the two target values.
+
+The binomial draws for the pre-experiment and experimental periods are independent, but both use the same $u_i$.
+Users who tend to have a high completion rate therefore remain more likely to have a high rate during the experiment.
+@tbl-simulation-diagnostics summarizes the target values used for generation and the resulting coefficients, correlation, and variance ratios.
+The calculation column makes the source of each value explicit.
+
+```{r}
+#| label: tbl-simulation-diagnostics
+#| tbl-cap: >-
+#|   Simulation targets and calculated quantities.
+#| echo: false
+#| message: false
+
+tibble(
+  item = c(
+    "Target baseline",
+    "Target ATE",
+    "alpha",
+    "tau_logit",
+    "rho",
+    "theta",
+    "CUPED variance ratio",
+    "Theta = 1 variance ratio",
+    "CUPED standard error reduction"
+  ),
+  calculation = c(
+    "Fixed simulation target",
+    "Fixed simulation target",
+    "`mean(plogis(alpha + user_effect)) = target_baseline`",
+    "`mean(plogis(alpha + user_effect + tau_logit) - p_pre) = ate_true`",
+    "`cor(x, y)`",
+    "`cov(y, x) / var(x)`",
+    "`1 - rho^2`",
+    "`var(y_theta1) / var(y)`",
+    "`1 - se_cuped / se_unadjusted`"
+  ),
+  value = c(
+    scales::percent(target_baseline, accuracy = 0.1),
+    scales::number(
+      ate_true * 100,
+      accuracy = 0.001,
+      prefix = "+",
+      suffix = " pp"
+    ),
+    scales::number(alpha, accuracy = 0.001),
+    scales::number(tau_logit, accuracy = 0.001),
+    scales::number(rho, accuracy = 0.001),
+    scales::number(theta, accuracy = 0.001),
+    scales::percent(1 - rho^2, accuracy = 0.1),
+    scales::percent(theta1_variance_ratio, accuracy = 0.1),
+    scales::percent(se_reduction, accuracy = 0.1)
+  )
+) |>
+  gt::gt() |>
+  gt::fmt_markdown(columns = calculation) |>
+  gt::cols_label(
+    item = "Quantity",
+    calculation = "Calculation",
+    value = "Value"
+  ) |>
+  gt::cols_align(align = "right", columns = value) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+The CUPED variance ratio in @tbl-simulation-diagnostics is calculated from $1 - \rho^2$.
+We next compare the unadjusted estimator, CUPED, and the adjustment with $\theta = 1$.
+
+```{r}
+#| label: tbl-estimates
+#| tbl-cap: >-
+#|   ATE estimates from the randomized comparison (pp).
+#|   The true value is +1.049 pp.
+#| echo: false
+#| message: false
+
+estimates |>
+  gt::gt() |>
+  gt::fmt_number(
+    columns = c(estimate, se, lower, upper),
+    decimals = 3,
+    scale_by = 100
+  ) |>
+  gt::cols_label(
+    method = "Estimator",
+    estimate = "Estimate",
+    se = "Standard error",
+    lower = "95% CI lower",
+    upper = "95% CI upper"
+  ) |>
+  gt::cols_align(align = "right", columns = -method) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+All three estimates in @tbl-estimates are close to the true value.
+The standard error is smaller under CUPED, with the reduction reported in @tbl-simulation-diagnostics.
+Whether the point estimate happens to move closer to the truth in this single simulation depends on the random draw, but across repeated experiments the estimates vary less.
+What matters for CUPED is not whether this particular point estimate is closer to the truth, but the difference in interval width.
+
+```{r}
+#| label: fig-estimates
+#| fig-cap: >-
+#|   Point estimates and 95% CIs for the ATE.
+#|   The vertical dashed line marks the true value of +1.049 pp.
+#| echo: false
+
+estimates |>
+  mutate(method = fct_rev(method)) |>
+  ggplot(aes(x = estimate, y = method)) +
+  geom_vline(xintercept = ate_true, linetype = "dashed", color = "grey50") +
+  geom_errorbar(aes(xmin = lower, xmax = upper), width = 0.15) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(
+    labels = scales::label_number(accuracy = 0.1, scale = 100, suffix = " pp")
+  ) +
+  labs(x = "Average treatment effect", y = "Estimator") +
+  theme_classic(base_family = "ubuntu", base_size = 13)
+```
+
+## The roles of DiD and CUPED
+
+Revisiting the CUPED estimator reveals its relationship to DiD:
+
+$$
+  \hat{\tau}(\theta) = (\bar{Y}_1 - \theta\bar{X}_1)
+                       - (\bar{Y}_0 - \theta\bar{X}_0).
+$$
+
+Setting $\theta = 1$ gives
+
+$$
+  \hat{\tau}(1) = (\bar{Y}_1 - \bar{X}_1) - (\bar{Y}_0 - \bar{X}_0),
+$$
+
+which is the same expression as DiD: calculate the pre-post change in each group and then take the difference between those changes.
+This connection appears in [Ding's (2023)](https://arxiv.org/abs/2305.18793) treatment of covariate adjustment and [Courthoud's (2024)](https://matteocourthoud.github.io/post/cuped/) comparison of CUPED and DiD.
+The algebra may be the same, but the two methods serve different purposes.
+
+  |                                   | DiD with observational data                                    | CUPED in a randomized comparison                        |
+  | --------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------- |
+  | Basis for counterfactual          | Parallel-trends assumption                                     | Random assignment                                       |
+  | Purpose of pre-period             | Remove time-invariant group differences to identify the effect | Remove chance pre-period differences to reduce variance |
+  | Coefficient on pre-period outcome | Fixed at $\theta = 1$                                          | Estimate $\theta^*$ to minimize variance                |
+
+In the [DiD article](/posts/causal-did-parallel-trends/), subtracting the change on Android from the change on iOS was itself the identification strategy used to remove time variation.
+Here, iOS users are randomly split into two groups, so the effect is identified without subtracting the pre-experiment difference.
+CUPED uses the pre-experiment outcome only to reduce the variance of the estimate.
+This distinction also explains why fixing $\theta = 1$ does not always reduce variance.
+
+$$
+  \mathrm{Var}(Y - X) = \mathrm{Var}(Y) + \mathrm{Var}(X) - 2\mathrm{Cov}(Y,X).
+$$
+
+If $X$ and $Y$ both have variance $\sigma^2$, the right-hand side becomes $2\sigma^2(1 - \rho)$.
+This is smaller than the unadjusted variance $\sigma^2$ only when $\rho > 0.5$.
+Mechanically subtracting the pre-experiment outcome can therefore increase variance when the correlation is weak.
+
+For $\theta = 1$, @tbl-simulation-diagnostics reports the ratio $\mathrm{Var}(Y - X)/\mathrm{Var}(Y)$.
+It is below the unadjusted variance in this dataset, but it does not fall as far as under CUPED with the optimal $\theta$.
+DiD fixes the coefficient at one for identification, whereas CUPED estimates the coefficient to minimize variance.
+That difference is visible here.
+
+## Implementation in BigQuery
+
+CUPED does not require a machine-learning model.
+It can be implemented by preparing each user's pre-experiment completion rate $X$, experimental outcome $Y$, and assignment $Z$, then calculating the mean and variance of $X$ and the covariance of $X$ and $Y$.
+
+The SQL below follows the same simplification as the synthetic data: every user in the analysis has a completion rate in both the pre-experiment and experimental periods.
+If real data do not satisfy this condition, users cannot be selected based on whether their experimental-period outcome is observed.
+The analysis population and the treatment of zero-impression users must be specified before assignment.
+
+Suppose `experiment_events` contains `user_id`, `arm`, `period`, `impression`, and `complete`.
+We first calculate each user's completion rate in both periods, then calculate $\theta$ and the adjusted outcome.
+
+```sql
+WITH user_metrics AS (
+  SELECT
+    user_id,
+    ANY_VALUE(arm) AS arm,
+    SAFE_DIVIDE(
+      SUM(IF(period = 'pre', complete, 0)),
+      NULLIF(SUM(IF(period = 'pre', impression, 0)), 0)
+    ) AS x,
+    SAFE_DIVIDE(
+      SUM(IF(period = 'post', complete, 0)),
+      NULLIF(SUM(IF(period = 'post', impression, 0)), 0)
+    ) AS y
+  FROM `project.dataset.experiment_events`
+  GROUP BY user_id
+),
+
+cuped_parameter AS (
+  SELECT
+    AVG(x) AS x_bar,
+    SAFE_DIVIDE(COVAR_SAMP(y, x), VAR_SAMP(x)) AS theta
+  FROM user_metrics
+),
+
+adjusted AS (
+  SELECT
+    arm,
+    y,
+    y - theta * (x - x_bar) AS y_cuped
+  FROM user_metrics
+  CROSS JOIN cuped_parameter
+)
+
+SELECT
+  arm,
+  COUNT(*) AS n_users,
+  AVG(y) AS mean_unadjusted,
+  AVG(y_cuped) AS mean_cuped,
+  VAR_SAMP(y_cuped) AS var_cuped
+FROM adjusted
+GROUP BY arm
+;
+```
+
+This query returns the mean and variance for each arm.
+The difference in `mean_cuped` between treatment and control is the CUPED estimate of the ATE.
+Its standard error can be calculated by dividing each arm's `var_cuped` by its user count and summing the results.
+
+When implementing CUPED, the following data-quality checks matter more than whether the SQL happens to run:
+
+- `arm` is unique within each user.
+- The pre-experiment window closes before assignment.
+- The analysis population is not selected using events observed after assignment.
+- A single person is not represented by separate IDs on different devices and assigned to both treatment and control.
+
+The final check is particularly important for multi-device services.
+If the same person appears under different IDs in both arms, spillover and assignment contamination follow.
+
+## Counterfactuals and experimental design
+
+Across this series, we have evaluated the same ad-pause feature in several ways.
+
+  | Method                | Construction of the counterfactual                              | Main cost or limitation                                               |
+  | --------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------- |
+  | Pre-post comparison   | Use pre-treatment iOS directly                                  | Cannot separate time variation from the treatment effect              |
+  | DiD                   | Remove time variation using the change on Android               | Parallel-trends assumption                                            |
+  | SCM                   | Reproduce pre-treatment iOS with a convex combination of donors | Continued factor structure; coarse rank-based inference               |
+  | CausalImpact          | Predict post-treatment iOS with a model                         | Dependence on the model, priors, and structural stability             |
+  | Randomized comparison | Assign contemporaneous iOS users to control                     | Experimental implementation, sample size, and operational constraints |
+
+Observational methods are necessary when evaluating an intervention after the fact because an experiment was not possible.
+But an intervention that can be randomized, such as a UI feature, need not be turned into an observational problem from the outset.
+Randomization places a comparison group that supports the counterfactual inside the experiment itself.
+
+CUPED improves estimation precision without changing that experimental design.
+Causal identification comes from random assignment, not from CUPED.
+The first question should therefore be whether the comparison group can be built into the design.
+Only when that is difficult should methods such as DiD, SCM, or CausalImpact be used to construct the counterfactual.
+
+## R code
+
+```r
+library(tidyverse)
+
+set.seed(2026)
+
+n_users <- 4000
+n_impression <- 100
+target_baseline <- 0.935
+ate_true <- 0.01049
+sd_user <- 0.5
+
+user_effect <- rnorm(n_users, mean = 0, sd = sd_user)
+
+# Find the intercept that gives these 4,000 users a mean completion probability of 93.5%
+alpha <- uniroot(
+  \(alpha) mean(plogis(alpha + user_effect)) - target_baseline,
+  interval = c(0, 10)
+)$root
+
+p_pre <- plogis(alpha + user_effect)
+
+# Find the logit-scale effect that gives this finite sample an ATE of +1.049 pp
+tau_logit <- uniroot(
+  \(tau) mean(plogis(alpha + user_effect + tau) - p_pre) - ate_true,
+  interval = c(0, 1)
+)$root
+
+p_post_0 <- p_pre
+p_post_1 <- plogis(alpha + user_effect + tau_logit)
+treated <- sample(c(
+  rep(FALSE, n_users / 2),
+  rep(TRUE, n_users / 2)
+))
+
+experiment <- tibble(
+  user_id = seq_len(n_users),
+  treated,
+  pre_complete = rbinom(n_users, n_impression, p_pre),
+  post_complete = rbinom(
+    n_users,
+    n_impression,
+    if_else(treated, p_post_1, p_post_0)
+  )
+) |>
+  mutate(
+    x = pre_complete / n_impression,
+    y = post_complete / n_impression
+  )
+
+theta <- with(experiment, cov(y, x) / var(x))
+x_bar <- with(experiment, mean(x))
+
+experiment <- experiment |>
+  mutate(
+    y_cuped = y - theta * (x - x_bar),
+    y_theta1 = y - (x - x_bar)
+  )
+
+estimate_diff <- function(data, outcome, method) {
+  by_arm <- data |>
+    summarise(
+      outcome_mean = mean({{ outcome }}),
+      variance = var({{ outcome }}),
+      n = n(),
+      .by = treated
+    )
+
+  estimate <- with(
+    by_arm,
+    outcome_mean[treated] - outcome_mean[!treated]
+  )
+  se <- with(by_arm, sqrt(sum(variance / n)))
+
+  tibble(
+    method,
+    estimate,
+    se,
+    lower = estimate - qnorm(0.975) * se,
+    upper = estimate + qnorm(0.975) * se
+  )
+}
+
+estimates <- bind_rows(
+  estimate_diff(experiment, y, "Difference in means"),
+  estimate_diff(experiment, y_cuped, "CUPED (estimated theta)"),
+  estimate_diff(experiment, y_theta1, "DiD (theta = 1)")
+)
+
+# Simulation targets and calculated quantities
+rho <- with(experiment, cor(x, y))
+theta1_variance_ratio <- with(experiment, var(y_theta1) / var(y))
+se_reduction <- with(
+  estimates,
+  1 -
+    se[method == "CUPED (estimated theta)"] /
+      se[method == "Difference in means"]
+)
+
+tibble(
+  target_baseline,
+  target_ate = ate_true,
+  alpha,
+  tau_logit,
+  rho,
+  theta,
+  cuped_variance_ratio = 1 - rho^2,
+  theta1_variance_ratio,
+  se_reduction
+)
+```
