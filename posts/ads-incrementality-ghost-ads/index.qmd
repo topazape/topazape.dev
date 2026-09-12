@@ -3,6 +3,7 @@ title: >-
   Integrating Ghost Ads into an Ad-Supported Video Platform
 description: >-
   A design exploration of Ghost Ads for AVOD, connecting ad selection, control-group measurement, and incremental conversions beyond attribution.
+image: ghost-ads-design.png
 draft: true
 draft-mode: unlinked
 date: "2026-11-17"

@@ -51,6 +51,8 @@ rsconnect/
 /.quarto/
 **/*.quarto_ipynb
 
+/_freeze/site_libs/
+
 /_site/
 index_files/
 
