@@ -1,169 +1,518 @@
 ---
-title: "ベルヌーイ混合モデルによる任意のジャンル組み合わせのユニークユーザー数推定"
+title: "潜在クラス分析によるジャンルの組み合わせ別ユニークユーザー数の推定"
 draft: true
 draft-mode: unlinked
-date: "2026-09-23"
+date: "2026-09-16"
 categories: ["audience-modeling", "mixture-models", "statistics"]
 ---
 
-メディアプランナーから「過去90日間に韓国ドラマまたは恋愛作品を見たユニークユーザーは何人か」と聞かれたとする。
-この答えは、提案するターゲティングセグメントがキャンペーン予算を消化できるかを左右する。
-さらに、16ジャンルから作られる $2^{16}-1$ 通りの組み合わせのうち、どれを指定されても答えられなければならない。
+```{r}
+#| label: setup
+#| include: false
 
-本稿では、$n=50{,}000$ 人の視聴者パネルを考える。
-各視聴者は $J=16$ 個の二値ジャンルフラグを持ち、複数ジャンルに同時に該当しうる。
-完全な視聴ログがあれば観測されたフラグパターンを数えるだけでよいが、パネルでは稀なパターンが数人しか観測されないか、まったく観測されないため、直接集計は不安定になる。
+library(tidyverse)
+```
 
-ジャンル集合 $S$ のユニークユーザー数は、既知の母集団サイズを $M$ とすると、
+メディアプランナーから「過去 90 日間に韓国ドラマまたはラブロマンスを見たユニークユーザーは何人ですか」と聞かれたとします。このように、複数の条件に当てはまる同一人物を重複なく数えた人数を、ユニークユーザー数 (Unique Users; UU) と呼びます。UU は、想定したターゲティングセグメントでキャンペーン予算を消化できるかどうかを判断する材料になります。
 
-$$
-  \text{UU}(S)=M\cdot P\!\left(\bigcup_{j\in S}X_j=1\right)
-$$
+視聴ログを全数取得できるなら、条件に合う視聴者を直接数えられます。しかし、ジャンルの組み合わせごとに大規模な個票データを走査すると、そのたびにクエリコストがかかります。この走査を避ける方法の一つは、ジャンル間の同時分布をあらかじめ近似し、その分布から UU を計算することです。
 
-と分解できる。
-したがって、以下では確率尺度だけを扱う。
-目的は、問い合わせ時に生データを参照せず、任意のジャンル集合 $S$ を和集合確率へ写像する関数を作ることである。
-そのために、パネルへベルヌーイ混合モデルを当てはめ、推定パラメータから問い合わせを閉形式で評価する。
+本稿では、その近似モデルとして潜在クラス分析 (Latent Class Analysis; LCA) を使います。LCA は、潜在的な集団を見つけて解釈するために使われることが一般的ですが、ここでは多変量二値データの同時分布を近似するために用います。推定後は個票データを走査せず、モデルのパラメータだけからジャンルの組み合わせごとの UU を計算できます。
 
-## 合成データ：16ジャンルと4つの潜在因子
+例として、$n = 50{,}000$ 人の視聴者パネルを考えます。各視聴者について、$J = 16$ ジャンルの視聴有無が二値で記録されており、同じ視聴者が複数のジャンルを見ている場合もあります。空でないジャンルの組み合わせは理論上 $2^{16} - 1$ 通りありますが、実務で扱う範囲として、近似精度の評価は最大 4 ジャンルの組み合わせまでとします。
 
-結果はすべて、生成過程を完全に開示した合成データに基づく。
-現実的な共起構造を作るため、ジャンルフラグにはブロック状の相関を持たせる。
-
-視聴者 $i$ は4次元の潜在因子 $\mathbf{f}_i\sim N(\mathbf{0},\mathbf{I}_4)$ を持つ。
-因子を条件とすると、ジャンルフラグは独立に生成される。
+ジャンル集合 $S$ の UU は、既知の母集団サイズを $M$ とすると、
 
 $$
-  P(X_{ij}=1\mid\mathbf{f}_i)
-  =\sigma\!\left(\alpha_j+\boldsymbol{\lambda}_j^\top\mathbf{f}_i\right),
-  \qquad \sigma(x)=\frac{1}{1+e^{-x}}
+  \operatorname{UU}(S) = M \cdot P\!\left( \bigcup_{j \in S}\{X_j = 1\} \right)
 $$
 
-第1因子は犯罪・ドキュメンタリー、第2因子は恋愛、第3因子はアニメ・SF・ファンタジー・ホラーを主に駆動する。
-第4因子は総視聴量で、すべてのジャンルへ弱く作用する。
-視聴量の多いユーザーほど多くのジャンルを見るため、実データで見られる全体的な正の相関が生じる。
+と表せます。以下では、この和集合確率を LCA の推定結果から閉形式で求め、その近似精度を検証します。
 
-推定対象は有限混合モデルだが、生成モデルは連続因子モデルである。
-つまり推定モデルは意図的に誤特定されており、実データがベルヌーイ混合分布へ厳密には従わない状況を再現している。
-$\alpha_j$ は周辺視聴率が12%から60%になるようシミュレーションで調整した。
-学習パネルは50,000人、評価用の真値は同じ過程から独立に生成した2,000,000人における経験的な和集合確率とする。
+## 合成データの生成
 
-## 独立近似は和集合を過大推定する
+ジャンル間の現実的な共起関係を再現するため、視聴傾向の近いジャンル同士に相関を持たせます。
 
-最も単純な推定量は、パネルから得た周辺確率 $\hat p_j$ を使い、フラグを互いに独立とみなす。
+視聴者 $i$ は、4 次元の潜在因子 $\mathbf{f}_i \sim N(\mathbf{0},\mathbf{I}_4)$ を持つものとします。この潜在因子を条件とすると、各ジャンルの視聴有無は独立に生成されます。
 
 $$
-  \hat P_{\text{indep}}\!\left(\bigcup_{j\in S}X_j=1\right)
-  =1-\prod_{j\in S}(1-\hat p_j)
+  P(X_{ij} = 1 \mid \mathbf{f}_i)
+  = \sigma\!\left( \alpha_j + \boldsymbol{\lambda}_j^\top\mathbf{f}_i \right),
+  \qquad
+  \sigma(x) = \frac{1}{1 + e^{-x}}
 $$
 
-しかしジャンルフラグは独立ではない。
-韓国ドラマを見る人は恋愛作品も見る確率が高く、実際の重複は独立近似より大きい。
-そのため独立近似は重複を過小評価し、和集合を過大評価する。
-ジャンル数が増えるほど、この誤差は累積する。
+第 1 因子は犯罪・ドキュメンタリー、第 2 因子は恋愛、第 3 因子はアニメ・SF・ファンタジー・ホラーの視聴傾向に強く影響します。第 4 因子は全ジャンルに共通する視聴量を表し、すべてのジャンルに弱く影響します。視聴量の多いユーザーほど幅広いジャンルを見るため、ジャンル全体に正の相関が生じます。ただし、このモデルで直接生成するのはジャンルごとの視聴有無であり、視聴時間ではありません。
 
-学習パネルでは韓国ドラマの視聴率が約0.35、恋愛作品が約0.40である。
-独立近似による和集合は $1-0.65\times0.60=0.61$ だが、標本外の真値は約0.55であり、約11%の過大推定となる。
-母集団が2,000万人なら、本当は約1,090万人であるところを、1,220万人へリーチ可能だと伝えることになる。
+  | Genre           | Serious $\lambda_{j1}$ | Romance $\lambda_{j2}$ | Fiction $\lambda_{j3}$ | Volume $\lambda_{j4}$ | $\alpha_j$ | Target viewer share $P(X_j = 1)$ |
+  | :-------------- | ---------------------: | ---------------------: | ---------------------: | --------------------: | ---------: | -------------------------------: |
+  | Crime Thriller  |                    1.2 |                    0.0 |                    0.3 |                   0.5 |      -0.27 |                             0.45 |
+  | True Crime      |                    1.4 |                    0.0 |                    0.0 |                   0.5 |      -1.18 |                             0.30 |
+  | Documentary     |                    1.0 |                    0.0 |                    0.0 |                   0.5 |      -0.77 |                             0.35 |
+  | K-Drama         |                    0.0 |                    1.4 |                    0.0 |                   0.5 |      -0.87 |                             0.35 |
+  | Romance         |                    0.0 |                    1.3 |                    0.2 |                   0.5 |      -0.56 |                             0.40 |
+  | Reality Dating  |                    0.0 |                    1.0 |                    0.0 |                   0.5 |      -1.71 |                             0.20 |
+  | Anime           |                    0.0 |                    0.2 |                    1.3 |                   0.5 |      -1.15 |                             0.30 |
+  | Sci-Fi          |                    0.3 |                    0.0 |                    1.2 |                   0.5 |      -1.45 |                             0.25 |
+  | Fantasy         |                    0.0 |                    0.3 |                    1.1 |                   0.5 |      -1.41 |                             0.25 |
+  | Horror          |                    0.2 |                    0.0 |                    0.8 |                   0.5 |      -2.31 |                             0.12 |
+  | Stand-up Comedy |                    0.0 |                    0.0 |                    0.0 |                   0.6 |      -1.18 |                             0.25 |
+  | Sitcom          |                    0.0 |                    0.3 |                    0.0 |                   0.6 |      -0.93 |                             0.30 |
+  | Action          |                    0.2 |                    0.0 |                    0.5 |                   0.6 |       0.46 |                             0.60 |
+  | Kids & Family   |                    0.0 |                    0.0 |                    0.2 |                   0.4 |      -1.44 |                             0.20 |
+  | Cooking & Food  |                    0.0 |                    0.2 |                    0.0 |                   0.5 |      -0.90 |                             0.30 |
+  | Sports Doc      |                    0.6 |                    0.0 |                    0.0 |                   0.5 |      -1.55 |                             0.20 |
 
-## 密度推定器としてのベルヌーイ混合モデル
+データ生成には、有限混合モデルではなく連続因子モデルを用います。したがって、後で推定に用いるベルヌーイ混合モデルは、真のデータ生成過程とは一致しません。実データも特定の有限混合分布に厳密に従うとは限らないため、その状況を想定した設定です。
 
-独立推定が誤るのは共起構造であり、長所は閉形式で評価できる点である。
-$K$ 成分のベルヌーイ混合モデルは、閉形式という長所を保ったまま共起構造を表現する。
+$\alpha_j$ は、各ジャンルを視聴したユーザーの割合が 12% から 60% になるよう、シミュレーションで調整しました。モデルの推定に使う学習データと、$K$ の選択に使うバリデーションデータは、それぞれ 50,000 人です。最終的な近似精度は、同じ生成過程から独立に作成した 2,000,000 人のテストデータで測定します。
+
+```{r}
+#| label: data-gen
+#| include: false
+#| cache: true
+
+genre_design <- tribble(
+  ~genre            , ~serious , ~romance , ~fiction , ~volume , ~alpha ,
+  "Crime Thriller"  , 1.2      , 0.0      , 0.3      , 0.5     , -0.27  ,
+  "True Crime"      , 1.4      , 0.0      , 0.0      , 0.5     , -1.18  ,
+  "Documentary"     , 1.0      , 0.0      , 0.0      , 0.5     , -0.77  ,
+  "K-Drama"         , 0.0      , 1.4      , 0.0      , 0.5     , -0.87  ,
+  "Romance"         , 0.0      , 1.3      , 0.2      , 0.5     , -0.56  ,
+  "Reality Dating"  , 0.0      , 1.0      , 0.0      , 0.5     , -1.71  ,
+  "Anime"           , 0.0      , 0.2      , 1.3      , 0.5     , -1.15  ,
+  "Sci-Fi"          , 0.3      , 0.0      , 1.2      , 0.5     , -1.45  ,
+  "Fantasy"         , 0.0      , 0.3      , 1.1      , 0.5     , -1.41  ,
+  "Horror"          , 0.2      , 0.0      , 0.8      , 0.5     , -2.31  ,
+  "Stand-up Comedy" , 0.0      , 0.0      , 0.0      , 0.6     , -1.18  ,
+  "Sitcom"          , 0.0      , 0.3      , 0.0      , 0.6     , -0.93  ,
+  "Action"          , 0.2      , 0.0      , 0.5      , 0.6     ,  0.46  ,
+  "Kids & Family"   , 0.0      , 0.0      , 0.2      , 0.4     , -1.44  ,
+  "Cooking & Food"  , 0.0      , 0.2      , 0.0      , 0.5     , -0.90  ,
+  "Sports Doc"      , 0.6      , 0.0      , 0.0      , 0.5     , -1.55
+)
+
+genres <- genre_design$genre
+s_pair <- c("K-Drama", "Romance")
+
+gen_viewers <- function(n, design) {
+  factor_names <- c("serious", "romance", "fiction", "volume")
+
+  latent_factors <- matrix(
+    rnorm(n * length(factor_names)),
+    nrow = n,
+    dimnames = list(NULL, factor_names)
+  )
+
+  factor_loadings <- design |>
+    select(all_of(factor_names)) |>
+    as.matrix()
+
+  linear_predictor <- latent_factors %*%
+    t(factor_loadings) |>
+    sweep(
+      MARGIN = 2,
+      STATS = design$alpha,
+      FUN = "+"
+    )
+
+  probabilities <- plogis(linear_predictor)
+
+  matrix(
+    rbinom(
+      n = length(probabilities),
+      size = 1,
+      prob = probabilities
+    ),
+    nrow = n,
+    dimnames = list(NULL, design$genre)
+  )
+}
+
+empirical_union <- function(x, S) {
+  mean(rowSums(x[, S, drop = FALSE]) > 0)
+}
+
+set.seed(2026)
+X_train <- gen_viewers(50000, genre_design)
+
+set.seed(2027)
+X_valid <- gen_viewers(50000, genre_design)
+```
+
+生成された学習データでは、同じ潜在因子の影響を受けるジャンル同士に、まとまった相関が現れています。
+
+```{r}
+#| label: fig-genre-correlation
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "学習データにおけるジャンル視聴有無の相関."
+#| echo: false
+
+ggcorrplot::ggcorrplot(
+  cor(X_train),
+  type = "upper",
+  show.diag = FALSE,
+  hc.order = TRUE,
+  colors = c("#F7F7F7", "#167B76"),
+  legend.limit = c(0, 0.4),
+  outline.color = "white",
+  legend.title = "Correlation",
+  ggtheme = theme_classic(
+    base_family = "ubuntu",
+    base_size = 12
+  ),
+  tl.col = "grey25",
+  tl.srt = 50
+)
+```
+
+## 独立近似による和集合の過大推定
+
+最も単純な方法は、学習データから得た各ジャンルの視聴者割合 $\hat p_j$ を使い、ジャンル間の視聴有無を互いに独立とみなすことです。このとき、ジャンル集合 $S$ のいずれかを視聴したユーザーの割合は、
+
+$$
+  \hat P_{\mathrm{indep}}\!\left( \bigcup_{j \in S}\{X_j = 1\} \right)
+  = 1 - \prod_{j \in S}(1 - \hat p_j)
+$$
+
+と推定できます。
+
+しかし、ジャンル間の視聴傾向は独立ではありません。韓国ドラマを見るユーザーはラブロマンスも見る傾向が強いため、二つの視聴者層の重複は独立を仮定した場合より大きくなります。その結果、独立近似では重複を過小評価し、少なくとも一方を見たユーザーの割合を過大評価します。
+
+学習データから計算した各ジャンルの視聴者割合、独立近似による和集合、バリデーションデータで実測した和集合を @tbl-indep に示します。
+
+```{r}
+#| label: tbl-indep
+#| tbl-cap: "韓国ドラマとラブロマンスの独立近似および実測された和集合."
+#| echo: false
+
+indep_tbl <- tibble(
+  k_drama_share = mean(X_train[, s_pair[1]]),
+  romance_share = mean(X_train[, s_pair[2]])
+) |>
+  mutate(
+    independence_estimate = 1 - (1 - k_drama_share) * (1 - romance_share),
+    observed_union = empirical_union(X_valid, s_pair),
+    relative_overestimate = (independence_estimate - observed_union) /
+      observed_union
+  )
+
+indep_tbl |>
+  gt::gt() |>
+  gt::fmt_percent(
+    columns = everything(),
+    decimals = 1
+  ) |>
+  gt::cols_label(
+    k_drama_share = "K-Drama share",
+    romance_share = "Romance share",
+    independence_estimate = "Independence estimate",
+    observed_union = "Observed union",
+    relative_overestimate = "Relative overestimate"
+  ) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
+
+母集団が 2,000 万人なら、和集合確率の数パーセントポイントの誤差が、UU では 100 万人単位の過大推定につながります。
+
+## 潜在クラス分析による同時分布の近似
+
+独立近似は和集合確率を簡単に計算できますが、ジャンル間の共起を表現できません。$K$ クラスの LCA、すなわちベルヌーイ混合モデルを使えば、計算のしやすさを保ちながら共起も表現できます。
 
 $$
   P(\mathbf{x})
-  =\sum_{k=1}^K\pi_k\prod_{j=1}^J
-    \theta_{jk}^{x_j}(1-\theta_{jk})^{1-x_j},
-  \qquad \mathbf{x}\in\{0,1\}^J
+  = \sum_{k=1}^K\pi_k\prod_{j=1}^J \theta_{jk}^{x_j}(1 - \theta_{jk})^{1-x_j},
+  \qquad
+  \mathbf{x} \in \{0,1\}^J
 $$
 
-$\pi_k$ はクラス $k$ の重み、$\theta_{jk}$ はクラス $k$ に属する視聴者がジャンル $j$ に該当する確率である。
-クラス内ではフラグが独立で、母集団全体の依存関係はクラスを混合することで生じる。
-これは心理測定における潜在クラス分析と同じモデルであり、以下では `flexmix` のEMアルゴリズムで推定する。
+$\pi_k$ はクラス $k$ の構成比、$\theta_{jk}$ はクラス $k$ に属する視聴者がジャンル $j$ を見る確率です。各クラスの中ではジャンル間の視聴有無を独立と仮定しますが、複数のクラスを混合することで、母集団全体の依存関係を表現できます。ここでは、{flexmix} の EM アルゴリズムで推定します。
 
-自由パラメータ数は $K(J+1)-1$ である。
-これは独立モデルの16パラメータと、飽和分割表の $2^{16}-1=65{,}535$ パラメータの中間に位置する。
-$K=1$ では独立モデルに一致し、$K$ を増やすことで共起構造を段階的に追加できる。
+自由パラメータ数は $K(J + 1) - 1$ です。独立モデルの 16 個より多い一方、飽和モデルに必要な $2^{16} - 1 = 65{,}535$ 個よりはるかに少なくなります。$K = 1$ は独立モデルと一致し、$K$ を増やすほど複雑な共起関係を表現できます。
 
-ここでは潜在クラス自体を解釈しない。
-混合モデルは $P(\mathbf{x})$ の密度推定器であり、評価基準はUU問い合わせの標本外精度だけである。
-同じ分布を導くパラメータ化ならUUの答えも同じなので、ラベルスイッチングは問題にならない。
+ここでは、潜在クラスそのものには解釈を与えません。混合モデルを $P(\mathbf{x})$ の確率分布を近似するために使い、ジャンルの組み合わせごとの UU 推定精度で評価します。同じ確率分布を表す限り UU の推定値も変わらないため、ラベルスイッチングは問題になりません。
 
-## 任意の問い合わせに対する閉形式のUU
+## 任意の条件に対する UU の計算
 
-クラス $k$ を条件とするとフラグは独立である。
-正であることを要求する添字集合を $A$、負であることを要求する集合を $B$ とすると、
+クラス $k$ を条件とすると、各ジャンルの視聴有無は独立です。視聴ありとするジャンルの集合を $A$、視聴なしとするジャンルの集合を $B$ とすると、
 
 $$
-  P\!\left(\bigcap_{j\in A}X_j=1\;\cap\;\bigcap_{j\in B}X_j=0\right)
-  =\sum_{k=1}^K\pi_k
-    \prod_{j\in A}\theta_{jk}\prod_{j\in B}(1-\theta_{jk})
+  P\!\left( \bigcap_{j \in A}\{X_j = 1\}\; \cap \;\bigcap_{j \in B}\{X_j = 0\} \right)
+  = \sum_{k=1}^K\pi_k \prod_{j \in A}\theta_{jk}\prod_{j \in B}(1 - \theta_{jk})
 $$
 
-となる。
-和集合は全フラグが0である事象の補集合なので、
+となります。集合 $S$ のいずれかのジャンルを見た確率は、$S$ に含まれるジャンルを一つも見ていない確率の余事象として、
 
 $$
-  P\!\left(\bigcup_{j\in S}X_j=1\right)
-  =1-\sum_{k=1}^K\pi_k\prod_{j\in S}(1-\theta_{jk})
+  P\!\left( \bigcup_{j \in S}\{X_j = 1\} \right)
+  = 1 - \sum_{k=1}^K\pi_k\prod_{j \in S}(1 - \theta_{jk})
 $$
 
-で評価できる。
-計算量は $O(K|S|)$ で、生データではなく推定パラメータだけを参照する。
-積集合や否定を含む問い合わせも同じ因数分解で処理できるため、一つの推定済みモデルをすべての問い合わせに利用できる。
+と求められます。計算量は $O(K|S|)$ で、計算時に必要なのは推定済みのパラメータだけです。「アニメを見たがホラーは見ていない」のように積集合や否定を含む条件も同じ形で計算できるため、一つのモデルでさまざまな集計条件に対応できます。
 
-```r
+## バリデーションデータに基づくクラス数の選択
+
+$K \in \{1,2,3,4,6,8,12,16\}$ を比較します。各モデルは 50,000 人の学習データだけで推定します。評価対象は、2-way（2 ジャンルの和集合、120 通り）、3-way（3 ジャンルの和集合、560 通り）、4-way（4 ジャンルの和集合、1,820 通り）のすべてです。それぞれについて和集合確率を推定し、バリデーションデータでの実測値と比較します。1-way は学習データの周辺割合をそのまま使えるため、評価対象から除きます。
+
+```{r}
+#| label: fit-mixtures
+#| include: false
+#| cache: true
+
+library(flexmix)
+
+Ks <- c(2, 3, 4, 6, 8, 12, 16)
+
+set.seed(2029)
+fits <- stepFlexmix(
+  X_train ~ 1,
+  k = Ks,
+  nrep = 3,
+  model = FLXMCmvbinary(),
+  verbose = FALSE
+)
+
+models <- map(Ks, \(k) getModel(fits, which = as.character(k)))
+
+params <- map(
+  models,
+  \(model) {
+    list(
+      pi = prior(model),
+      theta = parameters(model)
+    )
+  }
+)
+
+params <- c(
+  list(list(
+    pi = 1,
+    theta = matrix(
+      colMeans(X_train),
+      ncol = 1,
+      dimnames = list(genres, NULL)
+    )
+  )),
+  params
+)
+
+K_grid <- c(1, Ks)
+```
+
+```{r}
+#| label: validation-queries
+#| include: false
+#| cache: true
+
+queries <- map(2:4, \(n_way) {
+  combn(seq_along(genres), n_way, simplify = FALSE)
+}) |>
+  list_flatten()
+
+query_size <- lengths(queries)
+
 uu_union <- function(pi_hat, theta_hat, S) {
   1 - sum(pi_hat * apply(1 - theta_hat[S, , drop = FALSE], 2, prod))
 }
+
+valid_observed <- map_dbl(queries, \(S) empirical_union(X_valid, S))
+
+valid_error <- map2(K_grid, params, \(k, par) {
+  estimate <- map_dbl(
+    queries,
+    \(S) uu_union(par$pi, par$theta, S)
+  )
+
+  tibble(
+    query_id = seq_along(queries),
+    k = k,
+    n_way = query_size,
+    observed = valid_observed,
+    estimate = estimate,
+    error = estimate - observed
+  )
+}) |>
+  list_rbind()
+
+valid_by_size <- valid_error |>
+  summarise(rmse = sqrt(mean(error^2)), .by = c(k, n_way))
+
+valid_overall <- valid_error |>
+  summarise(rmse = sqrt(mean(error^2)), .by = k)
+
+selected_k <- 8
 ```
 
-## $K$ と標本外精度
+バリデーションデータでの実測値を $u_q$、モデルによる推定値を $\hat u_{q,K}$ とします。$K$ の選択には、2-way、3-way、4-way の全組み合わせについて、確率尺度で計算した RMSE を使います。各組み合わせを同じ重みで評価するため、組み合わせ数の多い way ほど全体の RMSE に占める重みも大きくなります。全組み合わせ数を $Q$ とすると、評価指標は次のようになります。
 
-$K\in\{2,3,4,6,8,12,16\}$ を50,000人の学習パネルへ当てはめ、それぞれ3回のランダム初期値から最大対数尤度の解を採用する。
-$K=1$ は周辺確率を最尤推定値とする独立モデルである。
-16ジャンルの全2-way（120通り）、3-way（560通り）、4-way（1,820通り）の和集合を、標本外の真値に対して評価する。
-指標は相対誤差 $|\hat u-u|/u$ を問い合わせサイズごとに平均した値である。
+$$
+  \operatorname{RMSE}(K)
+  = \sqrt{\frac{1}{Q}\sum_{q=1}^{Q}(\hat u_{q,K} - u_q)^2}
+$$
 
-$K=1$ では4-wayの誤差が最大で、2-wayが最小となる。
-これは、ジャンルが加わるたびに無視された重複の誤差が累積するためである。
-$K$ を増やすと誤差は急速に低下し、改善の大半は $K=4$ までに得られる。
-$K=6$ 以降では、すべての問い合わせサイズで平均誤差が1%未満となり、$K=16$ まで目立った過学習はない。
+```{r}
+#| label: fig-err-vs-k
+#| fig-cap: "潜在クラス数別のバリデーション RMSE."
+#| fig-width: 8
+#| fig-height: 5
+#| echo: false
 
-評価用母集団が有限であるため、真値にも標本誤差がある。
-各和集合確率は少なくとも0.20なので、その相対標準誤差は最大でも約0.14%である。
-誤差のプラトーはこの閾値より上にあり、残差は参照値のノイズではなく、誤特定された混合モデルに残るバイアスと解釈できる。
+plot_data <- bind_rows(
+  valid_by_size |>
+    mutate(series = paste0(n_way, "-way")) |>
+    select(k, series, rmse),
+  valid_overall |>
+    mutate(series = "Overall")
+)
 
-以後の実用上の選択は $K=8$ とする。
-これより大きな $K$ に、ここでは測定可能な改善がない。
-韓国ドラマと恋愛作品の和集合について、$K=8$ の混合モデルは独立近似にあった約11%の誤差をほぼ完全に除去する。
+ggplot(plot_data, aes(k, rmse, colour = series, group = series)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.4) +
+  geom_vline(
+    xintercept = selected_k,
+    linetype = "dashed",
+    colour = "grey35"
+  ) +
+  scale_x_continuous(breaks = K_grid) +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 0.01)) +
+  scale_colour_brewer(palette = "Dark2") +
+  labs(x = "Number of latent classes K", y = "RMSE", colour = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top")
+```
+
+RMSE は $K = 8$ まで低下し、それ以降の改善は小さくなっています。近似精度とモデルの複雑さのバランスから、$K = 8$ を採用します。
+
+## テストデータによる近似精度の評価
+
+選択した $K$ を固定した後、独立に生成した 200 万人のテストデータで近似精度を評価します。
+
+合成データでも、有限の標本から計算した和集合確率は、生成のたびにわずかに変動します。これがモンテカルロ誤差です。テストデータを 200 万人まで増やすことで、この変動を小さくし、テストデータでの実測値を母集団の和集合確率に近づけます。これにより、観測された誤差の大部分を、テストデータの偶然のばらつきではなくモデルの近似誤差として評価できます。テストデータは、モデルの推定にも $K$ の選択にも使用しません。
+
+```{r}
+#| label: test-evaluation
+#| include: false
+#| cache: true
+
+rm(X_valid)
+
+set.seed(2028)
+X_test <- gen_viewers(2000000, genre_design)
+
+test_observed <- map_dbl(queries, \(S) empirical_union(X_test, S))
+selected_params <- params[[match(selected_k, K_grid)]]
+
+test_estimate <- map_dbl(
+  queries,
+  \(S) {
+    uu_union(
+      selected_params$pi,
+      selected_params$theta,
+      S
+    )
+  }
+)
+
+test_error <- tibble(
+  n_way = query_size,
+  observed = test_observed,
+  estimate = test_estimate,
+  error = estimate - observed,
+  rel_error = abs(error) / observed
+)
+
+test_summary <- test_error |>
+  summarise(
+    rmse = sqrt(mean(error^2)),
+    mean_relative_error = mean(rel_error),
+    p95_relative_error = quantile(rel_error, 0.95),
+    max_relative_error = max(rel_error),
+    .by = n_way
+  )
+```
+
+選択した LCA による推定値を、テストデータで実測した和集合確率と比較します。点が 45 度線に近いほど、近似誤差が小さいことを表します。
+
+```{r}
+#| label: fig-final-accuracy
+#| fig-width: 7
+#| fig-height: 6
+#| fig-cap: "テストデータにおける和集合確率の実測値と推定値."
+#| echo: false
+
+final_plot_data <- test_error |>
+  mutate(query_size = paste0(n_way, "-way"))
+
+ggplot(final_plot_data, aes(observed, estimate, colour = query_size)) +
+  geom_abline(slope = 1, intercept = 0, colour = "grey45", linewidth = 0.7) +
+  geom_point(alpha = 0.35, size = 1.1) +
+  coord_equal() +
+  scale_colour_brewer(palette = "Dark2") +
+  labs(
+    x = "Observed union probability",
+    y = "Estimated union probability",
+    colour = "Query size"
+  ) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top")
+```
+
+```{r}
+#| label: tbl-test-error
+#| tbl-cap: "組み合わせるジャンル数別のテスト誤差."
+#| echo: false
+
+test_summary |>
+  mutate(
+    n_way = paste0(n_way, "-way")
+  ) |>
+  gt::gt() |>
+  gt::cols_label(
+    n_way = "Query size",
+    rmse = "RMSE",
+    mean_relative_error = "Mean relative error",
+    p95_relative_error = "95th percentile relative error",
+    max_relative_error = "Maximum relative error"
+  ) |>
+  gt::fmt_percent(
+    columns = c(
+      rmse,
+      mean_relative_error,
+      p95_relative_error,
+      max_relative_error
+    ),
+    decimals = 2
+  ) |>
+  gt::opt_table_font(font = gt::google_font("Lora"))
+```
 
 ## 実装例
+
+モデル推定後の集計に必要なのは、クラスの構成比 $\hat\pi_k$ と、クラス別・ジャンル別の視聴確率 $\hat\theta_{jk}$ だけです。
 
 ```r
 library(tidyverse)
 library(flexmix)
 
-# X_train: n × J の二値行列
-set.seed(2026)
+set.seed(2029)
 sf <- stepFlexmix(
   X_train ~ 1,
-  k = 8,
+  k = selected_k,
   nrep = 3,
   model = FLXMCmvbinary(),
   verbose = FALSE
 )
-fit <- getModel(sf, which = "8")
+fit <- getModel(sf, which = as.character(selected_k))
 
 pi_hat <- prior(fit)
 theta_hat <- parameters(fit)
 
-# 任意のジャンル添字集合 S に対する和集合確率
 uu_union <- function(pi_hat, theta_hat, S) {
   1 - sum(pi_hat * apply(1 - theta_hat[S, , drop = FALSE], 2, prod))
 }
 
-S <- match(c("K-Drama", "Romance"), colnames(X_train))
+s_pair <- c("K-Drama", "Romance")
+S <- match(s_pair, colnames(X_train))
 uu_union(pi_hat, theta_hat, S)
 ```

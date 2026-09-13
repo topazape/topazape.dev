@@ -35,4 +35,5 @@ dependencies = [
   { name = "BoomSpikeSlab", force_source = true },
   { name = "bsts", force_source = true },
   "CausalImpact",
+  "ggcorrplot",
 ]

@@ -767,6 +767,16 @@ force_source = false
 dependencies = []
 
 [[packages]]
+name = "ggcorrplot"
+version = "0.3.0"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "ggplot2", requirement = "(>= 3.3.6)" },
+    "reshape2",
+]
+
+[[packages]]
 name = "ggplot2"
 version = "4.0.3"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -1413,6 +1423,15 @@ dependencies = [
 ]
 
 [[packages]]
+name = "plyr"
+version = "1.8.9"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "Rcpp", requirement = "(>= 0.11.0)" },
+]
+
+[[packages]]
 name = "pracma"
 version = "2.4.6"
 source = { repository = "https://packagemanager.posit.co/cran/latest" }
@@ -1604,6 +1623,17 @@ dependencies = [
     "rmarkdown",
     "rstudioapi",
     { name = "withr", requirement = "(>= 2.3.0)" },
+]
+
+[[packages]]
+name = "reshape2"
+version = "1.4.5"
+source = { repository = "https://packagemanager.posit.co/cran/latest" }
+force_source = false
+dependencies = [
+    { name = "plyr", requirement = "(>= 1.8.1)" },
+    "Rcpp",
+    "stringr",
 ]
 
 [[packages]]
