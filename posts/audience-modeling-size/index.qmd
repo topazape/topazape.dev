@@ -1,9 +1,9 @@
 ---
 title: >-
-  Estimating Unique Users for Arbitrary Genre Combinations with a Bernoulli Mixture Model
+  Estimating unique users for genre combinations with latent class analysis
 description: >-
-  Estimate unique users for arbitrary genre combinations from a viewer panel using a Bernoulli mixture model and closed-form union probabilities.
-image: index_files/figure-html/fig-err-vs-k-1.png
+  Approximate the joint distribution of genre indicators with latent class analysis and estimate unique users for arbitrary genre combinations.
+image: index_files/figure-html/fig-genre-correlation-1.png
 draft: true
 draft-mode: unlinked
 date: "2026-09-16"
@@ -17,63 +17,76 @@ categories: ["audience-modeling", "mixture-models", "statistics"]
 library(tidyverse)
 ```
 
-A media planner asks: how many unique users watched K-Drama or Romance in the past 90 days?
-The answer determines whether a proposed targeting segment can absorb a campaign budget, and it must be available for any genre combination the planner selects from the $2^{16} - 1$ possible combinations in a 16-genre catalog.
+Suppose a media planner asks, "How many unique users watched either K-Drama or Romance in the past 90 days?"
+Here, unique users (UU) refers to the number of distinct people who satisfy the conditions, with each person counted only once.
+This number helps determine whether the proposed targeting segment can support the planned campaign budget.
 
-The setting for this post is a viewer panel: a sample of $n = 50{,}000$ viewers, each described by $J = 16$ binary genre flags, where a viewer can be positive on any subset of genres.
-The unique user (UU) count in the full population must be estimated from this sample.
-With complete logs, the question can be answered exactly by counting the observed flag patterns, and no model is needed.
-With a panel, rare flag patterns appear among only a handful of respondents, if at all, making direct counts unreliable.
+With access to the complete viewing logs, the qualifying viewers could be counted directly.
+Repeatedly scanning a large user-level table for every genre combination, however, incurs substantial query costs.
+One alternative is to approximate the joint distribution of genre indicators once and compute UU from that distribution.
 
-UU can be decomposed as $\text{UU}(S) = M \cdot P\!\left( \bigcup_{j \in S} X_j = 1 \right)$, where $M$ is the population size, a known constant.
-Everything below therefore works on the probability scale.
-The goal is a function that maps an arbitrary genre subset $S$ to its union probability without requiring access to the raw data at query time.
-This post builds that function by fitting a Bernoulli mixture model to the panel and deriving the query layer in closed form from the fitted parameters.
+Latent class analysis (LCA) is commonly used to identify and interpret latent subpopulations.
+Here, I instead use it to approximate the joint distribution of multivariate binary data.
+Once the model is fitted, its parameters alone are sufficient to compute UU for genre combinations without rescanning the user-level data.
 
-## Synthetic data: sixteen genres, four latent factors
+As an example, consider a panel of $n = 50{,}000$ viewers.
+Each viewer has $J = 16$ binary indicators for whether they watched each genre, and a viewer may watch multiple genres.
+The 16 genres yield $2^{16} - 1$ nonempty combinations in principle.
+For practical purposes, I limit the accuracy evaluation to combinations of up to four genres.
 
-All results use synthetic data with a fully disclosed generating process.
-The design goal is realistic co-occurrence: genre flags are correlated, and the correlation has block structure.
+For a genre set $S$ and a known population size $M$, UU is
 
-Each viewer $i$ has a vector of four latent factors $\mathbf{f}_i \sim N(\mathbf{0}, \mathbf{I}_4)$.
-The genre flags are generated independently given the factors:
+$$
+  \operatorname{UU}(S) = M \cdot P\!\left( \bigcup_{j \in S}\{X_j = 1\} \right)
+$$
+
+Below, I derive this union probability in closed form from the fitted LCA and evaluate its approximation error.
+
+## Synthetic data generation
+
+To produce realistic co-occurrence, I introduce correlations among genres with similar viewing patterns.
+
+Each viewer $i$ has four latent factors, $\mathbf{f}_i \sim N(\mathbf{0},\mathbf{I}_4)$.
+Conditional on these factors, the genre indicators are generated independently.
 
 $$
   P(X_{ij} = 1 \mid \mathbf{f}_i)
-  = \sigma\!\left( \alpha_j + \boldsymbol{\lambda}_j^\top \mathbf{f}_i \right), \qquad \sigma(x)
-                                  = \frac{1}{1 + e^{-x}}
+  = \sigma\!\left( \alpha_j + \boldsymbol{\lambda}_j^\top\mathbf{f}_i \right),
+  \qquad
+  \sigma(x) = \frac{1}{1 + e^{-x}}
 $$
 
-Factor 1 drives serious nonfiction (Crime Thriller, True Crime, Documentary).
-Factor 2 drives romance (K-Drama, Romance, Reality Dating).
-Factor 3 drives genre fiction (Anime, Sci-Fi, Fantasy, Horror).
-Factor 4 is total viewing volume and loads weakly on every genre: heavy viewers watch more of everything, which produces the global positive correlation observed in real viewing data.
+Factor 1 primarily drives crime and documentary viewing, Factor 2 romance, and Factor 3 anime, science fiction, fantasy, and horror.
+Factor 4 represents overall viewing volume and loads weakly on every genre.
+Heavy viewers tend to watch a broader range of genres, creating positive correlations across the panel.
+The model nevertheless generates binary genre indicators, not viewing time itself.
 
-  | Genre           | Serious $\lambda_{j1}$ | Romance $\lambda_{j2}$ | Fiction $\lambda_{j3}$ | Volume $\lambda_{j4}$ | $\alpha_j$ | Target marginal |
-  | --------------- | ---------------------: | ---------------------: | ---------------------: | --------------------: | ---------: | --------------: |
-  | Crime Thriller  |                    1.2 |                    0.0 |                    0.3 |                   0.5 |      -0.27 |            0.45 |
-  | True Crime      |                    1.4 |                    0.0 |                    0.0 |                   0.5 |      -1.18 |            0.30 |
-  | Documentary     |                    1.0 |                    0.0 |                    0.0 |                   0.5 |      -0.77 |            0.35 |
-  | K-Drama         |                    0.0 |                    1.4 |                    0.0 |                   0.5 |      -0.87 |            0.35 |
-  | Romance         |                    0.0 |                    1.3 |                    0.2 |                   0.5 |      -0.56 |            0.40 |
-  | Reality Dating  |                    0.0 |                    1.0 |                    0.0 |                   0.5 |      -1.71 |            0.20 |
-  | Anime           |                    0.0 |                    0.2 |                    1.3 |                   0.5 |      -1.15 |            0.30 |
-  | Sci-Fi          |                    0.3 |                    0.0 |                    1.2 |                   0.5 |      -1.45 |            0.25 |
-  | Fantasy         |                    0.0 |                    0.3 |                    1.1 |                   0.5 |      -1.41 |            0.25 |
-  | Horror          |                    0.2 |                    0.0 |                    0.8 |                   0.5 |      -2.31 |            0.12 |
-  | Stand-up Comedy |                    0.0 |                    0.0 |                    0.0 |                   0.6 |      -1.18 |            0.25 |
-  | Sitcom          |                    0.0 |                    0.3 |                    0.0 |                   0.6 |      -0.93 |            0.30 |
-  | Action          |                    0.2 |                    0.0 |                    0.5 |                   0.6 |       0.46 |            0.60 |
-  | Kids & Family   |                    0.0 |                    0.0 |                    0.2 |                   0.4 |      -1.44 |            0.20 |
-  | Cooking & Food  |                    0.0 |                    0.2 |                    0.0 |                   0.5 |      -0.90 |            0.30 |
-  | Sports Doc      |                    0.6 |                    0.0 |                    0.0 |                   0.5 |      -1.55 |            0.20 |
+  | Genre           | Serious $\lambda_{j1}$ | Romance $\lambda_{j2}$ | Fiction $\lambda_{j3}$ | Volume $\lambda_{j4}$ | $\alpha_j$ | Target viewer share $P(X_j = 1)$ |
+  | :-------------- | ---------------------: | ---------------------: | ---------------------: | --------------------: | ---------: | -------------------------------: |
+  | Crime Thriller  |                    1.2 |                    0.0 |                    0.3 |                   0.5 |      -0.27 |                             0.45 |
+  | True Crime      |                    1.4 |                    0.0 |                    0.0 |                   0.5 |      -1.18 |                             0.30 |
+  | Documentary     |                    1.0 |                    0.0 |                    0.0 |                   0.5 |      -0.77 |                             0.35 |
+  | K-Drama         |                    0.0 |                    1.4 |                    0.0 |                   0.5 |      -0.87 |                             0.35 |
+  | Romance         |                    0.0 |                    1.3 |                    0.2 |                   0.5 |      -0.56 |                             0.40 |
+  | Reality Dating  |                    0.0 |                    1.0 |                    0.0 |                   0.5 |      -1.71 |                             0.20 |
+  | Anime           |                    0.0 |                    0.2 |                    1.3 |                   0.5 |      -1.15 |                             0.30 |
+  | Sci-Fi          |                    0.3 |                    0.0 |                    1.2 |                   0.5 |      -1.45 |                             0.25 |
+  | Fantasy         |                    0.0 |                    0.3 |                    1.1 |                   0.5 |      -1.41 |                             0.25 |
+  | Horror          |                    0.2 |                    0.0 |                    0.8 |                   0.5 |      -2.31 |                             0.12 |
+  | Stand-up Comedy |                    0.0 |                    0.0 |                    0.0 |                   0.6 |      -1.18 |                             0.25 |
+  | Sitcom          |                    0.0 |                    0.3 |                    0.0 |                   0.6 |      -0.93 |                             0.30 |
+  | Action          |                    0.2 |                    0.0 |                    0.5 |                   0.6 |       0.46 |                             0.60 |
+  | Kids & Family   |                    0.0 |                    0.0 |                    0.2 |                   0.4 |      -1.44 |                             0.20 |
+  | Cooking & Food  |                    0.0 |                    0.2 |                    0.0 |                   0.5 |      -0.90 |                             0.30 |
+  | Sports Doc      |                    0.6 |                    0.0 |                    0.0 |                   0.5 |      -1.55 |                             0.20 |
 
-The generating model is a continuous factor model, not a finite mixture.
-The estimation model introduced below is therefore misspecified by construction, which reproduces the realistic situation: no real dataset follows a Bernoulli mixture.
+The data-generating process is a continuous factor model rather than a finite mixture.
+The Bernoulli mixture fitted below is therefore misspecified by construction.
+This reflects the realistic setting in which observed data are unlikely to follow any particular finite mixture exactly.
 
-Each $\alpha_j$ was calibrated by simulation to produce plausible marginal viewing rates ranging from 12% to 60%.
-The training panel is $n = 50{,}000$ viewers.
-The evaluation truth is the empirical union probability on an independent out-of-sample draw of 2,000,000 viewers from the same process.
+I calibrated each $\alpha_j$ by simulation so that the share of viewers watching each genre ranges from 12% to 60%.
+The training and validation sets each contain 50,000 viewers.
+Final approximation accuracy is measured against an independent test set of 2,000,000 viewers generated by the same process.
 
 ```{r}
 #| label: data-gen
@@ -101,148 +114,193 @@ genre_design <- tribble(
 )
 
 genres <- genre_design$genre
+s_pair <- c("K-Drama", "Romance")
 
 gen_viewers <- function(n, design) {
-  coef <- design |> select(alpha, serious:volume) |> as.matrix()
-  f <- cbind(1, matrix(rnorm(n * 4), ncol = 4))
-  p <- plogis(f %*% t(coef))
-  x <- (matrix(runif(length(p)), ncol = ncol(p)) < p) * 1L
-  colnames(x) <- design$genre
-  x
+  factor_names <- c("serious", "romance", "fiction", "volume")
+
+  latent_factors <- matrix(
+    rnorm(n * length(factor_names)),
+    nrow = n,
+    dimnames = list(NULL, factor_names)
+  )
+
+  factor_loadings <- design |>
+    select(all_of(factor_names)) |>
+    as.matrix()
+
+  linear_predictor <- latent_factors %*%
+    t(factor_loadings) |>
+    sweep(
+      MARGIN = 2,
+      STATS = design$alpha,
+      FUN = "+"
+    )
+
+  probabilities <- plogis(linear_predictor)
+
+  matrix(
+    rbinom(
+      n = length(probabilities),
+      size = 1,
+      prob = probabilities
+    ),
+    nrow = n,
+    dimnames = list(NULL, design$genre)
+  )
+}
+
+empirical_union <- function(x, S) {
+  mean(rowSums(x[, S, drop = FALSE]) > 0)
 }
 
 set.seed(2026)
 X_train <- gen_viewers(50000, genre_design)
-X_truth <- gen_viewers(2000000, genre_design)
+
+set.seed(2027)
+X_valid <- gen_viewers(50000, genre_design)
 ```
 
-## The independence approximation overstates the union
+The training data show clusters of correlated genres driven by the same latent factors.
 
-The simplest estimator treats the flags as independent.
-With marginal rates $\hat{p}_j$ from the panel:
+```{r}
+#| label: fig-genre-correlation
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "Correlations among genre indicators in the training data."
+#| echo: false
+
+ggcorrplot::ggcorrplot(
+  cor(X_train),
+  type = "upper",
+  show.diag = FALSE,
+  hc.order = TRUE,
+  colors = c("#F7F7F7", "#167B76"),
+  legend.limit = c(0, 0.4),
+  outline.color = "white",
+  legend.title = "Correlation",
+  ggtheme = theme_classic(
+    base_family = "ubuntu",
+    base_size = 12
+  ),
+  tl.col = "grey25",
+  tl.srt = 50
+)
+```
+
+## Overestimating the union under independence
+
+A simple approach uses the marginal viewer shares $\hat p_j$ from the training data and assumes that genre indicators are mutually independent.
+Under this assumption, the share of users who watched at least one genre in $S$ is
 
 $$
-  \hat{P}_{\text{indep}}\!\left( \bigcup_{j \in S} X_j = 1 \right)
-  = 1 - \prod_{j \in S} (1 - \hat{p}_j)
+  \hat P_{\mathrm{indep}}\!\left( \bigcup_{j \in S}\{X_j = 1\} \right)
+  = 1 - \prod_{j \in S}(1 - \hat p_j)
 $$
 
-Genre flags are not independent.
-Viewers who watch K-Drama disproportionately also watch Romance, so the two audiences overlap far more than independence implies.
-The product understates the overlap and therefore overstates the union.
-The error is one-sided, and it compounds as more genres enter $S$.
+Genre preferences are not independent, however.
+Viewers who watch K-Drama are also more likely to watch Romance, so the overlap between the two audiences is larger than independence implies.
+The independence approximation consequently understates the overlap and overstates the share who watched at least one of the two genres.
 
-The training panel gives $\hat{p}_{\text{K-Drama}} = 0.35$ and $\hat{p}_{\text{Romance}} = 0.40$.
-The independence estimate of the union is $1 - 0.65 \times 0.60 = 0.61$.
-The out-of-sample truth is about $0.55$: an overestimate of roughly 11%.
-@tbl-indep shows the exact values.
-Scaled to a population of 20 million, a planner would be told 12.2 million reachable users when the true number is about 10.9 million.
+@tbl-indep reports the marginal viewer shares from the training data, the union implied by independence, and the union observed in the validation data.
 
 ```{r}
 #| label: tbl-indep
-#| tbl-cap: >-
-#|   Independence estimate vs. out-of-sample truth for the union of K-Drama and Romance.
+#| tbl-cap: "Independence estimate and observed union for K-Drama and Romance."
 #| echo: false
 
-truth_u <- mean(rowSums(X_truth[, c("K-Drama", "Romance")]) > 0)
-
 indep_tbl <- tibble(
-  p_kd = mean(X_train[, "K-Drama"]),
-  p_ro = mean(X_train[, "Romance"]),
-  indep = 1 - (1 - p_kd) * (1 - p_ro),
-  truth = truth_u,
-  rel_err = (indep - truth) / truth
-)
+  k_drama_share = mean(X_train[, s_pair[1]]),
+  romance_share = mean(X_train[, s_pair[2]])
+) |>
+  mutate(
+    independence_estimate = 1 - (1 - k_drama_share) * (1 - romance_share),
+    observed_union = empirical_union(X_valid, s_pair),
+    relative_overestimate = (independence_estimate - observed_union) /
+      observed_union
+  )
 
 indep_tbl |>
   gt::gt() |>
-  gt::fmt_number(columns = c(p_kd, p_ro, indep, truth), decimals = 3) |>
-  gt::fmt_percent(columns = rel_err, decimals = 1) |>
-  gt::cols_label(
-    p_kd = "K-Drama rate (train)",
-    p_ro = "Romance rate (train)",
-    indep = "Independence union",
-    truth = "Out-of-sample truth",
-    rel_err = "Relative error"
+  gt::fmt_percent(
+    columns = everything(),
+    decimals = 1
   ) |>
-  gt::cols_align(align = "right") |>
+  gt::cols_label(
+    k_drama_share = "K-Drama share",
+    romance_share = "Romance share",
+    independence_estimate = "Independence estimate",
+    observed_union = "Observed union",
+    relative_overestimate = "Relative overestimate"
+  ) |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-## A Bernoulli mixture as a density estimator
+For a population of 20 million, an error of only a few percentage points in the union probability can translate into an overestimate on the order of a million users.
 
-What the independence estimator gets wrong is co-occurrence; what it gets right is closed-form evaluation.
-The Bernoulli mixture model with $K$ components keeps the second and repairs the first:
+## Approximating the joint distribution with LCA
+
+The independence approximation makes union probabilities easy to calculate but cannot represent co-occurrence across genres.
+An LCA with $K$ classes---equivalently, a Bernoulli mixture model---retains the simple probability calculation while allowing for dependence at the population level.
 
 $$
   P(\mathbf{x})
-  = \sum_{k=1}^{K} \pi_k \prod_{j=1}^{J} \theta_{jk}^{x_j} (1 - \theta_{jk})^{1-x_j}, \qquad \mathbf{x}
-                \in \{0, 1\}^J
+  = \sum_{k=1}^K\pi_k\prod_{j=1}^J \theta_{jk}^{x_j}(1 - \theta_{jk})^{1-x_j},
+  \qquad
+  \mathbf{x} \in \{0,1\}^J
 $$
 
-where $\pi_k$ is the weight of class $k$ and $\theta_{jk}$ is the probability that a viewer in class $k$ has genre $j$ flagged.
-Within a class the flags are independent; all dependence in the population arises from mixing over classes.
-This is the model behind latent class analysis (LCA) in psychometrics, fitted by EM; the [flexmix](https://cran.r-project.org/package=flexmix) implementation is used below.
+Here, $\pi_k$ is the mixing proportion for class $k$, and $\theta_{jk}$ is the probability that a viewer in class $k$ watches genre $j$.
+Genre indicators are conditionally independent within each class, but mixing multiple classes induces dependence in the population.
+I estimate the model with the EM algorithm implemented in {flexmix}.
 
-The model has $K(J + 1) - 1$ free parameters: $KJ$ class-conditional rates and $K - 1$ weights.
-This sits between the independence model ($J = 16$ parameters) and the saturated contingency table ($2^{16} - 1 = 65{,}535$).
-$K$ alone moves the model between these two endpoints.
+The model has $K(J + 1) - 1$ free parameters: more than the 16 parameters in the independence model, but far fewer than the $2^{16} - 1 = 65{,}535$ required by the saturated model.
+Setting $K = 1$ recovers the independence model, while larger values of $K$ can represent richer dependence structures.
 
-At $K = 1$ the mixture collapses to $\prod_j \theta_j^{x_j} (1 - \theta_j)^{1-x_j}$, whose MLE is $\hat{\theta}_j = \hat{p}_j$.
-The independence estimator of the previous section is the one-component special case.
-Increasing $K$ starts from the naive estimator and adds co-occurrence structure.
+I do not interpret the latent classes themselves.
+Instead, I use the mixture to approximate $P(\mathbf{x})$ and evaluate it by the accuracy of UU estimates across genre combinations.
+Label switching is immaterial because relabeling the classes leaves both the fitted distribution and the resulting UU estimates unchanged.
 
-The classes are not interpreted.
-In segmentation work an LCA fit is judged by whether the classes are meaningful, and identifiability and label switching are live concerns.
-Here the mixture is a density estimator for $P(\mathbf{x})$, the classes are basis functions, and the only criterion is out-of-sample accuracy of the UU queries.
-Two parameterizations that induce the same distribution give identical UU answers, so label switching is irrelevant for this use.
+## Computing UU for arbitrary conditions
 
-```r
-library(flexmix)
-
-# X_train: n x J binary matrix; K chosen in the next section
-fit <- flexmix(X_train ~ 1, k = K, model = FLXMCmvbinary())
-
-pi_hat <- prior(fit) # length K
-theta_hat <- parameters(fit) # J x K matrix of theta_jk
-```
-
-## Closed-form UU for arbitrary queries
-
-Conditional on class $k$ the flags are independent, so any event that fixes a subset of flags factorizes within a class.
-For disjoint index sets $A$ (flags required positive) and $B$ (flags required negative):
+Conditional on class $k$, the genre indicators are independent.
+Let $A$ be the set of genres required to be present and $B$ the set required to be absent.
+Then
 
 $$
-  P\!\left( \bigcap_{j \in A} X_j = 1 \; \cap \; \bigcap_{j \in B} X_j = 0 \right)
-  = \sum_{k=1}^{K} \pi_k \prod_{j \in A} \theta_{jk} \prod_{j \in B} (1 - \theta_{jk})
+  P\!\left( \bigcap_{j \in A}\{X_j = 1\}\; \cap \;\bigcap_{j \in B}\{X_j = 0\} \right)
+  = \sum_{k=1}^K\pi_k \prod_{j \in A}\theta_{jk}\prod_{j \in B}(1 - \theta_{jk})
 $$
 
-The union query is the complement of the all-negative event.
-The union over $S$ fails exactly when every flag in $S$ is zero, so:
+The probability of watching at least one genre in $S$ is the complement of watching none of them:
 
 $$
-  P\!\left( \bigcup_{j \in S} X_j = 1 \right)
-  = 1 - \sum_{k=1}^{K} \pi_k \prod_{j \in S} (1 - \theta_{jk})
+  P\!\left( \bigcup_{j \in S}\{X_j = 1\} \right)
+  = 1 - \sum_{k=1}^K\pi_k\prod_{j \in S}(1 - \theta_{jk})
 $$
 
-Evaluation costs $O(K \lvert S \rvert)$ multiplications and touches only the fitted parameters, not the raw data.
-Intersections and negations ("watched Anime but not Horror") are already in the factorized form above, and any Boolean combination of flags reduces to sums of such terms, so one fitted model serves every query type.
+This calculation has complexity $O(K|S|)$ and requires only the fitted parameters.
+The same model also handles intersections and exclusions, such as "watched Anime but not Horror," through the corresponding products of $\theta_{jk}$ and $1 - \theta_{jk}$.
 
-## Out-of-sample accuracy as a function of K
+## Selecting the number of classes using validation data
+
+I compare $K \in \{1,2,3,4,6,8,12,16\}$.
+Every model is fitted exclusively on the 50,000-viewer training set.
+The evaluation covers all 120 two-way, 560 three-way, and 1,820 four-way genre unions.
+For each query, I compare the estimated union probability with its empirical counterpart in the validation data.
+I exclude one-way queries because their marginal probabilities can be estimated directly from the training data.
 
 ```{r}
 #| label: fit-mixtures
 #| include: false
 #| cache: true
-#| dependson: data-gen
-#| message: false
-#| warning: false
 
 library(flexmix)
 
 Ks <- c(2, 3, 4, 6, 8, 12, 16)
 
-set.seed(2026)
-sf <- stepFlexmix(
+set.seed(2029)
+fits <- stepFlexmix(
   X_train ~ 1,
   k = Ks,
   nrep = 3,
@@ -250,231 +308,255 @@ sf <- stepFlexmix(
   verbose = FALSE
 )
 
-params <- map(Ks, \(k) {
-  fit <- getModel(sf, which = as.character(k))
-  list(pi = prior(fit), theta = parameters(fit))
-})
+models <- map(Ks, \(k) getModel(fits, which = as.character(k)))
 
-# K = 1: the independence model, MLE in closed form
+params <- map(
+  models,
+  \(model) {
+    list(
+      pi = prior(model),
+      theta = parameters(model)
+    )
+  }
+)
+
 params <- c(
   list(list(
     pi = 1,
-    theta = matrix(colMeans(X_train), ncol = 1, dimnames = list(genres, NULL))
+    theta = matrix(
+      colMeans(X_train),
+      ncol = 1,
+      dimnames = list(genres, NULL)
+    )
   )),
   params
 )
-Ks_all <- c(1, Ks)
+
+K_grid <- c(1, Ks)
 ```
 
 ```{r}
-#| label: truth-queries
+#| label: validation-queries
 #| include: false
 #| cache: true
-#| dependson: data-gen
 
-queries <- map(2:4, \(w) combn(length(genres), w, simplify = FALSE)) |>
+queries <- map(2:4, \(n_way) {
+  combn(seq_along(genres), n_way, simplify = FALSE)
+}) |>
   list_flatten()
-query_size <- map_int(queries, length)
-truth_uu <- map_dbl(queries, \(S) mean(rowSums(X_truth[, S, drop = FALSE]) > 0))
-```
 
-```{r}
-#| label: eval-queries
-#| include: false
+query_size <- lengths(queries)
 
 uu_union <- function(pi_hat, theta_hat, S) {
   1 - sum(pi_hat * apply(1 - theta_hat[S, , drop = FALSE], 2, prod))
 }
 
-err_tbl <- map2(params, Ks_all, \(pr, k) {
+valid_observed <- map_dbl(queries, \(S) empirical_union(X_valid, S))
+
+valid_error <- map2(K_grid, params, \(k, par) {
+  estimate <- map_dbl(
+    queries,
+    \(S) uu_union(par$pi, par$theta, S)
+  )
+
   tibble(
+    query_id = seq_along(queries),
     k = k,
     n_way = query_size,
-    truth = truth_uu,
-    est = map_dbl(queries, \(S) uu_union(pr$pi, pr$theta, S))
+    observed = valid_observed,
+    estimate = estimate,
+    error = estimate - observed
   )
 }) |>
-  list_rbind() |>
-  mutate(rel_err = abs(est - truth) / truth)
+  list_rbind()
+
+valid_by_size <- valid_error |>
+  summarise(rmse = sqrt(mean(error^2)), .by = c(k, n_way))
+
+valid_overall <- valid_error |>
+  summarise(rmse = sqrt(mean(error^2)), .by = k)
+
+selected_k <- 8
 ```
 
-Each $K \in \{2, 3, 4, 6, 8, 12, 16\}$ is fitted on the training panel with three random EM restarts, keeping the best log-likelihood; $K = 1$ needs no fitting, since its MLE is the vector of marginal rates.
-Every 2-way (120 queries), 3-way (560), and 4-way (1,820) union is evaluated against the out-of-sample truth.
-The metric is the relative error $\lvert \hat{u} - u \rvert / u$, averaged within each query size.
+Let $u_q$ denote the union probability observed in the validation data and $\hat u_{q,K}$ the estimate from the model with $K$ classes.
+I select $K$ using RMSE on the probability scale across all two-way, three-way, and four-way queries.
+Every combination receives equal weight, so query sizes with more possible combinations contribute more to the overall RMSE.
+With $Q$ total queries, the criterion is
+
+$$
+  \operatorname{RMSE}(K)
+  = \sqrt{\frac{1}{Q}\sum_{q=1}^{Q}(\hat u_{q,K} - u_q)^2}
+$$
 
 ```{r}
 #| label: fig-err-vs-k
-#| fig-cap: >-
-#|   Mean relative error of out-of-sample UU estimates as a function of K, by query size.
-#|   K = 1 is the marginal independence model.
-#|   The y-axis is on a log scale.
+#| fig-cap: "Validation RMSE by number of latent classes."
+#| fig-width: 8
+#| fig-height: 5
 #| echo: false
-#| message: false
 
-err_summary <- err_tbl |>
-  summarise(mean_err = mean(rel_err), .by = c(k, n_way)) |>
-  mutate(n_way = paste0(n_way, "-way"))
+plot_data <- bind_rows(
+  valid_by_size |>
+    mutate(series = paste0(n_way, "-way")) |>
+    select(k, series, rmse),
+  valid_overall |>
+    mutate(series = "Overall")
+)
 
-ggplot(err_summary, aes(x = k, y = mean_err, colour = n_way, shape = n_way)) +
-  geom_point(size = 2.5) +
-  geom_line() +
-  scale_x_continuous(breaks = c(1, 2, 3, 4, 6, 8, 12, 16)) +
-  scale_y_log10(labels = scales::label_percent(accuracy = 0.1)) +
+ggplot(plot_data, aes(k, rmse, colour = series, group = series)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.4) +
+  geom_vline(
+    xintercept = selected_k,
+    linetype = "dashed",
+    colour = "grey35"
+  ) +
+  scale_x_continuous(breaks = K_grid) +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 0.01)) +
+  scale_colour_brewer(palette = "Dark2") +
+  labs(x = "Number of latent classes K", y = "RMSE", colour = NULL) +
+  theme_classic(base_family = "ubuntu", base_size = 13) +
+  theme(legend.position = "top")
+```
+
+RMSE declines through $K = 8$ and improves only slightly thereafter.
+Balancing approximation accuracy against model complexity, I select $K = 8$.
+
+## Approximation accuracy on the test set
+
+After fixing $K$, I evaluate approximation accuracy on an independently generated test set of two million viewers.
+
+Even with synthetic data, an empirical union probability computed from a finite sample varies slightly from one draw to another.
+This is Monte Carlo error.
+Increasing the test set to two million viewers reduces this variation and brings the observed union probabilities close to their population values.
+The remaining discrepancies therefore reflect model approximation error more than random variation in the test data.
+The test set is used neither to fit the model nor to select $K$.
+
+```{r}
+#| label: test-evaluation
+#| include: false
+#| cache: true
+
+rm(X_valid)
+
+set.seed(2028)
+X_test <- gen_viewers(2000000, genre_design)
+
+test_observed <- map_dbl(queries, \(S) empirical_union(X_test, S))
+selected_params <- params[[match(selected_k, K_grid)]]
+
+test_estimate <- map_dbl(
+  queries,
+  \(S) {
+    uu_union(
+      selected_params$pi,
+      selected_params$theta,
+      S
+    )
+  }
+)
+
+test_error <- tibble(
+  n_way = query_size,
+  observed = test_observed,
+  estimate = test_estimate,
+  error = estimate - observed,
+  rel_error = abs(error) / observed
+)
+
+test_summary <- test_error |>
+  summarise(
+    rmse = sqrt(mean(error^2)),
+    mean_relative_error = mean(rel_error),
+    p95_relative_error = quantile(rel_error, 0.95),
+    max_relative_error = max(rel_error),
+    .by = n_way
+  )
+```
+
+I compare the estimates from the selected LCA with union probabilities observed in the test data.
+Points closer to the 45-degree line indicate smaller approximation errors.
+
+```{r}
+#| label: fig-final-accuracy
+#| fig-width: 7
+#| fig-height: 6
+#| fig-cap: "Observed and estimated union probabilities in the test data."
+#| echo: false
+
+final_plot_data <- test_error |>
+  mutate(query_size = paste0(n_way, "-way"))
+
+ggplot(final_plot_data, aes(observed, estimate, colour = query_size)) +
+  geom_abline(slope = 1, intercept = 0, colour = "grey45", linewidth = 0.7) +
+  geom_point(alpha = 0.35, size = 1.1) +
+  coord_equal() +
+  scale_colour_brewer(palette = "Dark2") +
   labs(
-    x = "K (number of mixture components)",
-    y = "Mean relative error",
-    colour = NULL,
-    shape = NULL
+    x = "Observed union probability",
+    y = "Estimated union probability",
+    colour = "Query size"
   ) +
   theme_classic(base_family = "ubuntu", base_size = 13) +
   theme(legend.position = "top")
 ```
 
-@fig-err-vs-k has three features.
-At $K = 1$ the mean error is largest for 4-way queries and smallest for 2-way queries, matching the mechanism from the independence section: each additional genre compounds the error from ignoring overlap.
-The error drops steeply as $K$ increases: most of the reduction is realized by $K = 4$, and from $K = 6$ onward the mean error for every query size is a fraction of a percent.
-Beyond that the curve flattens, with no visible overfitting up to $K = 16$.
-At $n = 50{,}000$, even $K = 16$ has only 271 parameters, so the additional variance from fitting more components remains negligible over this grid.
-
-Every evaluated union contains a genre with a marginal rate of 0.20 or higher (only Horror sits below 0.20, and every query has at least two genres), so its union probability is at least $0.20$ and the relative sampling error of the truth, $\sqrt{(1 - p) / (N p)}$, is at most $\sqrt{0.8 / (2{,}000{,}000 \times 0.20)} \approx 0.14\%$; out-of-sample errors below this resolution would be indistinguishable from noise in the truth.
-The error plateau remains above this threshold, and 0.14% is the worst case, reached only by the smallest unions; for typical 3-way and 4-way unions, sampling noise in the reference values is several times smaller.
-The remaining error is real model error, the bias floor of the misspecified mixture, not noise in the truth.
-
-$K = 8$ is used below; larger $K$ adds no measurable improvement here.
-@tbl-nway breaks the $K = 8$ error down by query size, including tail behavior across all 2,500 queries.
-
 ```{r}
-#| label: tbl-nway
-#| tbl-cap: >-
-#|   Relative error at K = 8 by query size, over all 2-way, 3-way, and 4-way unions.
+#| label: tbl-test-error
+#| tbl-cap: "Test error by number of genres in the query."
 #| echo: false
 
-err_tbl |>
-  filter(k == 8) |>
-  summarise(
-    mean_err = mean(rel_err),
-    p95_err = quantile(rel_err, 0.95),
-    max_err = max(rel_err),
-    .by = n_way
+test_summary |>
+  mutate(
+    n_way = paste0(n_way, "-way")
   ) |>
-  arrange(n_way) |>
-  mutate(n_way = paste0(n_way, "-way")) |>
   gt::gt() |>
-  gt::fmt_percent(columns = c(mean_err, p95_err, max_err), decimals = 2) |>
   gt::cols_label(
     n_way = "Query size",
-    mean_err = "Mean",
-    p95_err = "95th percentile",
-    max_err = "Max"
+    rmse = "RMSE",
+    mean_relative_error = "Mean relative error",
+    p95_relative_error = "95th percentile relative error",
+    max_relative_error = "Maximum relative error"
   ) |>
-  gt::cols_align(align = "right") |>
+  gt::fmt_percent(
+    columns = c(
+      rmse,
+      mean_relative_error,
+      p95_relative_error,
+      max_relative_error
+    ),
+    decimals = 2
+  ) |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-For the K-Drama and Romance union, the mixture at $K = 8$ removes essentially all of the 11% independence error (@tbl-showcase).
+## Implementation
 
-```{r}
-#| label: tbl-showcase
-#| tbl-cap: >-
-#|   Union of K-Drama and Romance: independence vs. Bernoulli mixture against the out-of-sample truth.
-#| echo: false
-
-S_show <- match(c("K-Drama", "Romance"), genres)
-pr8 <- params[[which(Ks_all == 8)]]
-
-tibble(
-  method = c("Independence (K = 1)", "Bernoulli mixture (K = 8)"),
-  est = c(indep_tbl$indep, uu_union(pr8$pi, pr8$theta, S_show)),
-  truth = truth_u
-) |>
-  mutate(rel_err = (est - truth) / truth) |>
-  gt::gt() |>
-  gt::fmt_number(columns = c(est, truth), decimals = 3) |>
-  gt::fmt_percent(columns = rel_err, decimals = 1) |>
-  gt::cols_label(
-    method = "Method",
-    est = "Union estimate",
-    truth = "Out-of-sample truth",
-    rel_err = "Relative error"
-  ) |>
-  gt::cols_align(align = "right") |>
-  gt::opt_table_font(font = gt::google_font("Lora"))
-```
-
-## R code
+Once the model is fitted, the only quantities required for aggregation are the class proportions $\hat\pi_k$ and the class-specific genre probabilities $\hat\theta_{jk}$.
 
 ```r
 library(tidyverse)
 library(flexmix)
 
-genre_design <- tribble(
-  ~genre            , ~serious , ~romance , ~fiction , ~volume , ~alpha ,
-  "Crime Thriller"  , 1.2      , 0.0      , 0.3      , 0.5     , -0.27  ,
-  "True Crime"      , 1.4      , 0.0      , 0.0      , 0.5     , -1.18  ,
-  "Documentary"     , 1.0      , 0.0      , 0.0      , 0.5     , -0.77  ,
-  "K-Drama"         , 0.0      , 1.4      , 0.0      , 0.5     , -0.87  ,
-  "Romance"         , 0.0      , 1.3      , 0.2      , 0.5     , -0.56  ,
-  "Reality Dating"  , 0.0      , 1.0      , 0.0      , 0.5     , -1.71  ,
-  "Anime"           , 0.0      , 0.2      , 1.3      , 0.5     , -1.15  ,
-  "Sci-Fi"          , 0.3      , 0.0      , 1.2      , 0.5     , -1.45  ,
-  "Fantasy"         , 0.0      , 0.3      , 1.1      , 0.5     , -1.41  ,
-  "Horror"          , 0.2      , 0.0      , 0.8      , 0.5     , -2.31  ,
-  "Stand-up Comedy" , 0.0      , 0.0      , 0.0      , 0.6     , -1.18  ,
-  "Sitcom"          , 0.0      , 0.3      , 0.0      , 0.6     , -0.93  ,
-  "Action"          , 0.2      , 0.0      , 0.5      , 0.6     ,  0.46  ,
-  "Kids & Family"   , 0.0      , 0.0      , 0.2      , 0.4     , -1.44  ,
-  "Cooking & Food"  , 0.0      , 0.2      , 0.0      , 0.5     , -0.90  ,
-  "Sports Doc"      , 0.6      , 0.0      , 0.0      , 0.5     , -1.55
-)
-
-genres <- genre_design$genre
-
-gen_viewers <- function(n, design) {
-  coef <- design |> select(alpha, serious:volume) |> as.matrix()
-  f <- cbind(1, matrix(rnorm(n * 4), ncol = 4))
-  p <- plogis(f %*% t(coef))
-  x <- (matrix(runif(length(p)), ncol = ncol(p)) < p) * 1L
-  colnames(x) <- design$genre
-  x
-}
-
-set.seed(2026)
-X_train <- gen_viewers(50000, genre_design)
-X_truth <- gen_viewers(2000000, genre_design)
-
-# Fit: stepFlexmix keeps the best of nrep random EM restarts per k
+set.seed(2029)
 sf <- stepFlexmix(
   X_train ~ 1,
-  k = 8,
+  k = selected_k,
   nrep = 3,
   model = FLXMCmvbinary(),
   verbose = FALSE
 )
-fit <- getModel(sf, which = "8")
-
-# Closed-form union probability for a genre index set S
-uu_union <- function(pi_hat, theta_hat, S) {
-  1 - sum(pi_hat * apply(1 - theta_hat[S, , drop = FALSE], 2, prod))
-}
-
-# Out-of-sample empirical union probability
-uu_truth <- function(X, S) mean(rowSums(X[, S, drop = FALSE]) > 0)
+fit <- getModel(sf, which = as.character(selected_k))
 
 pi_hat <- prior(fit)
 theta_hat <- parameters(fit)
 
-S <- match(c("K-Drama", "Romance"), genres)
+uu_union <- function(pi_hat, theta_hat, S) {
+  1 - sum(pi_hat * apply(1 - theta_hat[S, , drop = FALSE], 2, prod))
+}
+
+s_pair <- c("K-Drama", "Romance")
+S <- match(s_pair, colnames(X_train))
 uu_union(pi_hat, theta_hat, S)
-uu_truth(X_truth, S)
-
-# Relative error over all 2- to 4-way union queries
-queries <- map(2:4, \(w) combn(length(genres), w, simplify = FALSE)) |>
-  list_flatten()
-
-rel_err <- map_dbl(queries, \(S) {
-  truth <- uu_truth(X_truth, S)
-  abs(uu_union(pi_hat, theta_hat, S) - truth) / truth
-})
-
-mean(rel_err)
 ```
