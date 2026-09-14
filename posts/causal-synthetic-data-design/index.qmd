@@ -6,7 +6,7 @@ description: >-
 image: index_files/figure-html/fig-ios-series-1.png
 draft: true
 draft-mode: unlinked
-date: "2026-10-07"
+date: "2026-10-21"
 categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
@@ -149,7 +149,7 @@ Pick an anchor date $t_0$ and time window lengths $k_{\text{pre}}, k_{\text{post
 $$
   \hat{\Delta}(t_0;\, k_{\text{pre}}, k_{\text{post}})
   = \frac{\sum_{t \in W_{\text{post}}} x_t}{\sum_{t \in W_{\text{post}}} n_t}
-                                                         - \frac{\sum_{t \in W_{\text{pre}}} x_t}{\sum_{t \in W_{\text{pre}}} n_t}
+    - \frac{\sum_{t \in W_{\text{pre}}} x_t}{\sum_{t \in W_{\text{pre}}} n_t}
 $$
 
 Here, $n_t$ and $x_t$ are the impressions and completes for iOS on day $t$, with the time windows defined as $W_{\text{pre}} = [t_0 - k_{\text{pre}},\, t_0)$ and $W_{\text{post}} = [t_0,\, t_0 + k_{\text{post}})$.
@@ -317,8 +317,9 @@ The panel is generated directly as device-by-day aggregate cells; no individual 
 Users exist only as a per-device volume scale $M_d$.
 
 $$
-  n_{dt} \sim \text{Poisson}(1.5\, M_d), \qquad x_{dt}
-         \sim \text{Binomial}(n_{dt},\, p_{dt})
+  n_{dt} \sim \text{Poisson}(1.5\, M_d),
+  \qquad
+  x_{dt} \sim \text{Binomial}(n_{dt},\, p_{dt})
 $$
 
 $$
@@ -411,7 +412,7 @@ Concretely, for each iOS post-period cell, take the difference between the gener
 $$
   \text{ATT}
   = \frac{\sum_{t \geq T} n_{\text{ios},t} \left[ \sigma(\ell_{\text{ios},t}) - \sigma(\ell_{\text{ios},t} - \tau) \right]}{\sum_{t \geq T} n_{\text{ios},t}}
-             = +1.049 \text{ pp}
+  = +1.049 \text{ pp}
 $$
 
 $\sigma$ is the logistic function and $\ell$ the linear predictor including the treatment.
@@ -449,8 +450,8 @@ Replacing the completes inside $\hat{\Delta}$ with these rates gives the expecta
 $$
   \hat{\Delta}
   = \underbrace{\left[ m(W_{\text{post}}) - m(W_{\text{pre}}) \right] - \left[ m^0(W_{\text{post}}) - m^0(W_{\text{pre}}) \right]}_{\text{treatment}}
-                 + \underbrace{m^0(W_{\text{post}}) - m^0(W_{\text{pre}})}_{\text{contamination}}
-                 + \text{noise}
+    + \underbrace{m^0(W_{\text{post}}) - m^0(W_{\text{pre}})}_{\text{contamination}}
+    + \text{noise}
 $$
 
 Here $m(W) = \sum_{t \in W} n_t p_t / \sum_{t \in W} n_t$, and $m^0$ is the same quantity computed with $p^0$.

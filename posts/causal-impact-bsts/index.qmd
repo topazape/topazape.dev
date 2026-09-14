@@ -6,7 +6,7 @@ description: >-
 image: index_files/figure-html/fig-impact-1.png
 draft: true
 draft-mode: unlinked
-date: "2026-10-28"
+date: "2026-11-11"
 categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
@@ -49,8 +49,9 @@ The release date $T$ (June 1, 2026) is $t = 183$.
 The observation equation is
 
 $$
-  y_t = \mu_t + \gamma_t + \boldsymbol{\beta}^\top \mathbf{x}_t
-        + \varepsilon_t, \qquad \varepsilon_t \sim N(0, \sigma_\varepsilon^2).
+  y_t = \mu_t + \gamma_t + \boldsymbol{\beta}^\top \mathbf{x}_t + \varepsilon_t,
+  \qquad
+  \varepsilon_t \sim N(0, \sigma_\varepsilon^2).
 $$
 
   | Component                                                   | State transition                                                                                    | Variation captured                                                           |
