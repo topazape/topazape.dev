@@ -6,7 +6,7 @@ description: >-
 image: index_files/figure-html/fig-placebo-1.png
 draft: true
 draft-mode: unlinked
-date: "2026-10-21"
+date: "2026-11-04"
 categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
@@ -53,8 +53,8 @@ Write $Y_{jt}$ for the completion rate of donor $j$ on day $t$ ($j = 1, \dots, J
 The synthetic control is built as a convex combination of the donors, that is, a weighted average with weights $w_j$ that are non-negative and sum to one.
 
 $$
-  \hat{Y}^{\text{synth}}_{t} = \sum_{j=1}^{J} w_j\, Y_{jt}, \qquad w_j
-                             \geq 0, \quad \sum_{j=1}^{J} w_j = 1
+  \hat{Y}^{\text{synth}}_{t} = \sum_{j=1}^{J} w_j\, Y_{jt}, \qquad w_j \geq 0,
+  \quad \sum_{j=1}^{J} w_j = 1
 $$
 
 The weights $w_j$ are chosen by how well they reproduce the pre-period iOS series.

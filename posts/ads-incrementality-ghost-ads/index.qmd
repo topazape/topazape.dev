@@ -6,7 +6,7 @@ description: >-
 image: ghost-ads-design.png
 draft: true
 draft-mode: unlinked
-date: "2026-11-17"
+date: "2026-10-07"
 categories: [
   "causal-inference",
   "incrementality",

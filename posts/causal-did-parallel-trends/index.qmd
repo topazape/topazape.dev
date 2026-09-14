@@ -6,7 +6,7 @@ description: >-
 image: index_files/figure-html/fig-gap-1.png
 draft: true
 draft-mode: unlinked
-date: "2026-10-14"
+date: "2026-10-28"
 categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
@@ -59,7 +59,7 @@ The DiD estimator is the difference of the pre-post differences.
 $$
   \hat{\tau}_{\text{DiD}}
   = \left( \bar{Y}_{\text{iOS},\text{post}} - \bar{Y}_{\text{iOS},\text{pre}} \right)
-                            - \left( \bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}} \right)
+    - \left( \bar{Y}_{c,\text{post}} - \bar{Y}_{c,\text{pre}} \right)
 $$
 
 When the expectation of $\bar{Y}_{d,W}$ has an additive structure in a device level $\mu_d$, a time effect $\lambda_W$, and a treatment effect $\tau$, the terms that the subtractions cancel are as follows.
@@ -210,8 +210,9 @@ The horizontal axis is not raw elapsed days but $t / T_{\text{pre}}$, scaled to 
 The slope $\beta$ can then be read as the gap opened over the entire pre-period.
 
 $$
-  D_t = \alpha + \beta \cdot \frac{t}{T_{\text{pre}}}
-        + \varepsilon_t, \qquad H_0: \beta = 0
+  D_t = \alpha + \beta \cdot \frac{t}{T_{\text{pre}}} + \varepsilon_t,
+  \qquad
+  H_0: \beta = 0
 $$
 
 ```{r}

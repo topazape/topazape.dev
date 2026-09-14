@@ -2,7 +2,7 @@
 title: "CUPED で A/B テストの検出力を高める"
 draft: true
 draft-mode: unlinked
-date: "2026-11-04"
+date: "2026-11-18"
 categories: ["causal-inference", "experimental-design", "statistics"]
 ---
 

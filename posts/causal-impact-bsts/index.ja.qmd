@@ -2,7 +2,7 @@
 title: "CausalImpact：ベイズ構造時系列による反実仮想の構築"
 draft: true
 draft-mode: unlinked
-date: "2026-10-28"
+date: "2026-11-11"
 categories: ["causal-inference", "quasi-experimental-design", "statistics"]
 ---
 
@@ -38,8 +38,9 @@ BSTS は、処置ユニット自身の時間構造と対照系列への回帰を
 iOS の日次完再生率を $y_t$、10 種類の対照デバイスの完再生率を並べたベクトルを $\mathbf{x}_t$ とします。$t = 1, \dots, 243$ は 2025-12-01 から 2026-07-31 までの日付に対応し、リリース日 $T$ (2026-06-01) は $t = 183$ にあたります。観測方程式は次のとおりです。
 
 $$
-  y_t = \mu_t + \gamma_t + \boldsymbol{\beta}^\top \mathbf{x}_t
-        + \varepsilon_t, \qquad \varepsilon_t \sim N(0, \sigma_\varepsilon^2)
+  y_t = \mu_t + \gamma_t + \boldsymbol{\beta}^\top \mathbf{x}_t + \varepsilon_t,
+  \qquad
+  \varepsilon_t \sim N(0, \sigma_\varepsilon^2)
 $$
 
   | 成分                                            | 状態の遷移                                                                                          | 説明する変動                                         |
