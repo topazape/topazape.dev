@@ -531,6 +531,17 @@ test_summary |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
+## Summary
+
+Audience sizes cannot generally be added when targeting conditions overlap.
+Modeling the joint distribution of genre indicators provides a way to account for that overlap while avoiding repeated scans of user-level data.
+
+In this example, I used latent class analysis not to interpret latent audience segments, but as a compact approximation to the joint distribution.
+The number of classes was selected using validation error on the downstream UU queries rather than an information criterion.
+
+Once fitted, the model can answer arbitrary genre-union queries from the estimated parameters alone.
+The practical value is therefore less about discovering latent classes and more about turning a large set of overlapping audience definitions into a reusable query layer.
+
 ## Implementation
 
 Once the model is fitted, the only quantities required for aggregation are the class proportions $\hat\pi_k$ and the class-specific genre probabilities $\hat\theta_{jk}$.

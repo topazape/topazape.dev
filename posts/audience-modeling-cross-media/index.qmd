@@ -94,15 +94,17 @@ Let the panel size be $n$.
 Usage times are ranked within the panel and divided by $n + 1$, preventing values of exactly 0 or 1.
 
 $$
-  U_i = \frac{\operatorname{rank}(X_i)}{n + 1}, \qquad V_i
-      = \frac{\operatorname{rank}(Y_i)}{n + 1}
+  U_i = \frac{\operatorname{rank}(X_i)}{n + 1},
+  \qquad
+  V_i = \frac{\operatorname{rank}(Y_i)}{n + 1}
 $$
 
 The ranks are then transformed into normal scores, and their correlation is estimated.
 
 $$
-  Z_{Xi} = \Phi^{-1}(U_i), \qquad Z_{Yi}
-         = \Phi^{-1}(V_i), \qquad \hat\rho = \operatorname{Cor}(Z_X,Z_Y)
+  Z_{Xi} = \Phi^{-1}(U_i), \qquad Z_{Yi} = \Phi^{-1}(V_i),
+  \qquad
+  \hat\rho = \operatorname{Cor}(Z_X,Z_Y)
 $$
 
 The key distinction is that within-panel ranks are used to estimate dependence, whereas the marginal distributions from the large-scale logs map probabilities back to usage times.
@@ -132,13 +134,15 @@ The population contains 500,000 people.
 A shared factor $H_i$ represents each person's propensity to watch video, and weekly usage times are generated as follows.
 
 $$
-  \log X_i = \log 2 + 0.8H_i + \varepsilon_{Ai}, \qquad \varepsilon_{Ai}
-           \sim N(0,0.6^2)
+  \log X_i = \log 2 + 0.8H_i + \varepsilon_{Ai},
+  \qquad
+  \varepsilon_{Ai} \sim N(0,0.6^2)
 $$
 
 $$
-  \log Y_i = \log 1.5 + 0.6H_i + \varepsilon_{Bi}, \qquad \varepsilon_{Bi}
-           \sim N(0,0.8^2)
+  \log Y_i = \log 1.5 + 0.6H_i + \varepsilon_{Bi},
+  \qquad
+  \varepsilon_{Bi} \sim N(0,0.8^2)
 $$
 
 The error terms are mutually independent and independent of $H_i$.
@@ -148,8 +152,9 @@ Conditional on $H_i = 0$, median weekly usage is two hours for A and 1.5 hours f
 The main simulation uses a mixture in which 20% of the population has a somewhat higher viewing propensity.
 
 $$
-  B \sim \operatorname{Bernoulli}(0.2), \qquad Z_H
-    \sim N(0,1), \qquad B \perp \!\!\! \perp Z_H
+  B \sim \operatorname{Bernoulli}(0.2),
+  \qquad
+  Z_H \sim N(0,1), \qquad B \perp \!\!\! \perp Z_H
 $$
 
 The variable $B$ is a switch selecting the mixture component.
@@ -158,8 +163,9 @@ When $B = 1$, the person belongs to a group whose mean is 1.5 higher.
 The latent usage propensity is generated as follows.
 
 $$
-  H_{\mathrm{raw}} = 1.5B + Z_H, \qquad H
-                   = \frac{H_{\mathrm{raw}} - 0.3}{\sqrt{1.36}}
+  H_{\mathrm{raw}} = 1.5B + Z_H,
+  \qquad
+  H = \frac{H_{\mathrm{raw}} - 0.3}{\sqrt{1.36}}
 $$
 
 The marginal distribution of $H_{\mathrm{raw}}$ is therefore $0.8N(0,1) + 0.2N(1.5,1)$.
@@ -580,3 +586,16 @@ Real weekly data often contain many zero-hour observations from nonusers, creati
 A rank transformation that assumes continuous distributions should not be applied unchanged.
 Instead, usage incidence and positive usage time among users should be estimated separately.
 The former captures discrete outcomes such as neither service and A only, while the latter models dependence between positive usage times.
+
+## Discussion
+
+Marginal distributions alone are not sufficient to determine cross-platform audience overlap.
+
+One possible approach is to combine large-scale service logs with a smaller single-source panel: the former can be used to estimate the marginal distributions, while the latter provides information about dependence between the services.
+
+In this simulation, Gaussian copula fusion gave more stable overlap estimates than direct aggregation from the small panel.
+
+Whether this works in practice depends on the assumptions.
+In particular, the dependence structure estimated from the panel needs to be reasonably representative of the target population, and the data sources need to measure compatible quantities.
+Copula fusion should therefore be viewed as one possible data-fusion approach rather than a general solution to selection bias or measurement mismatch.
+
