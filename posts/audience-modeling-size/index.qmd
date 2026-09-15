@@ -4,8 +4,6 @@ title: >-
 description: >-
   Approximate the joint distribution of genre indicators with latent class analysis and estimate unique users for arbitrary genre combinations.
 image: index_files/figure-html/fig-genre-correlation-1.png
-draft: true
-draft-mode: unlinked
 date: "2026-09-16"
 categories: ["audience-modeling", "mixture-models", "statistics"]
 ---
