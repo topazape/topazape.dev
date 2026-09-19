@@ -1,9 +1,13 @@
 ---
 title: "差分の差分法(DiD)による効果検証"
-draft: true
-draft-mode: unlinked
-date: "2026-10-28"
-categories: ["causal-inference", "quasi-experimental-design", "statistics"]
+emoji: "📈"
+type: "tech"
+topics: ["causal-inference", "quasi-experimental-design", "statistics"]
+published: false
+format:
+  gfm:
+    variant: +yaml_metadata_block
+    wrap: preserve
 ---
 
 ```{r}

@@ -1,14 +1,18 @@
 ---
 title: "広告付き動画配信基盤への Ghost Ads の組み込み"
-draft: true
-draft-mode: unlinked
-date: "2026-10-07"
-categories: [
+emoji: "👻"
+type: "tech"
+topics: [
   "causal-inference",
   "incrementality",
   "advertising",
   "system-design",
 ]
+published: false
+format:
+  gfm:
+    variant: +yaml_metadata_block
+    wrap: preserve
 ---
 
 広告キャンペーンの結果を見るとき、最初に確認する指標の一つが Attributed CV です。インプレッションやクリックの後に発生したコンバージョン (CV) を広告接触にひも付けるため、日々の配信評価には欠かせません。多くの広告配信基盤には、すでにこの計測機能があります。

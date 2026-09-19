@@ -1,9 +1,13 @@
 ---
 title: "CausalImpact：ベイズ構造時系列による反実仮想の構築"
-draft: true
-draft-mode: unlinked
-date: "2026-11-11"
-categories: ["causal-inference", "quasi-experimental-design", "statistics"]
+emoji: "🔮"
+type: "tech"
+topics: ["causal-inference", "bayesian", "time-series", "statistics"]
+published: false
+format:
+  gfm:
+    variant: +yaml_metadata_block
+    wrap: preserve
 ---
 
 ```{r}

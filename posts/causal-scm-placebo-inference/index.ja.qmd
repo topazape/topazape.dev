@@ -1,9 +1,13 @@
 ---
 title: "合成コントロール法(SCM): 対照の選択から重みの推定へ"
-draft: true
-draft-mode: unlinked
-date: "2026-11-04"
-categories: ["causal-inference", "quasi-experimental-design", "statistics"]
+emoji: "⚖️"
+type: "tech"
+topics: ["causal-inference", "synthetic-control", "statistics"]
+published: false
+format:
+  gfm:
+    variant: +yaml_metadata_block
+    wrap: preserve
 ---
 
 ```{r}
