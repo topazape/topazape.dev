@@ -1,7 +1,13 @@
 ---
 title: "潜在クラス分析によるジャンルの組み合わせ別ユニークユーザー数の推定"
-date: "2026-09-16"
-categories: ["audience-modeling", "mixture-models", "statistics"]
+emoji: "🧩"
+type: "tech"
+topics: ["audience-modeling", "mixture-models", "statistics"]
+published: false
+format:
+  gfm:
+    variant: +yaml_metadata_block
+    wrap: preserve
 ---
 
 ```{r}

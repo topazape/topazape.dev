@@ -1,9 +1,13 @@
 ---
 title: "前後比較の限界から始める合成データの設計"
-draft: true
-draft-mode: unlinked
-date: "2026-10-21"
-categories: ["causal-inference", "quasi-experimental-design", "statistics"]
+emoji: "🧱"
+type: "tech"
+topics: ["causal-inference", "synthetic-data", "statistics"]
+published: false
+format:
+  gfm:
+    variant: +yaml_metadata_block
+    wrap: preserve
 ---
 
 ```{r}

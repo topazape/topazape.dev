@@ -1,9 +1,13 @@
 ---
 title: "CUPED で A/B テストの検出力を高める"
-draft: true
-draft-mode: unlinked
-date: "2026-11-18"
-categories: ["causal-inference", "experimental-design", "statistics"]
+emoji: "🧪"
+type: "tech"
+topics: ["causal-inference", "experimental-design", "statistics"]
+published: false
+format:
+  gfm:
+    variant: +yaml_metadata_block
+    wrap: preserve
 ---
 
 ```{r}
