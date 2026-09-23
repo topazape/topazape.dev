@@ -4,8 +4,6 @@ title: >-
 description: >-
   Fuse large-scale service logs with a small single-source panel using a Gaussian copula to estimate cross-media audience overlap and complementarity.
 image: index_files/figure-html/fig-joint-usage-1.png
-draft: true
-draft-mode: unlinked
 date: "2026-09-23"
 categories: ["audience-modeling", "data-fusion", "statistics"]
 ---
