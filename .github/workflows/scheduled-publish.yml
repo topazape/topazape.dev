@@ -2,7 +2,7 @@ name: Scheduled Publish
 
 on:
   schedule:
-    - cron: "17 18 * * *" # 18:17 JST
+    - cron: "10 15 * * *" # 15:10 JST
       timezone: "Asia/Tokyo"
   workflow_dispatch:
 
