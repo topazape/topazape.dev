@@ -494,7 +494,7 @@ dependencies = [
 [[packages]]
 name = "countreg"
 version = "0.3-0"
-source = { repository = "https://r-forge.r-project.org/" }
+source = { repository = "https://zeileis.r-universe.dev/", git = "https://codeberg.org/zeileis/countreg", sha = "a9bfc37dff5e53944f0747ec5177fff746a07d44" }
 force_source = false
 dependencies = [
     "MASS",
