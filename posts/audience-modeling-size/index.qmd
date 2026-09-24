@@ -2,7 +2,7 @@
 title: >-
   Estimating unique users for genre combinations with latent class analysis
 description: >-
-  Approximate the joint distribution of genre indicators with latent class analysis and estimate unique users for arbitrary genre combinations.
+  Use latent class analysis to approximate viewing patterns and estimate unique audience sizes for any combination of genres.
 image: index_files/figure-html/fig-genre-correlation-1.png
 date: "2026-09-16"
 categories: ["audience-modeling", "mixture-models", "statistics"]
@@ -15,22 +15,30 @@ categories: ["audience-modeling", "mixture-models", "statistics"]
 library(tidyverse)
 ```
 
-Suppose a media planner asks, "How many unique users watched either K-Drama or Romance in the past 90 days?"
-Here, unique users (UU) refers to the number of distinct people who satisfy the conditions, with each person counted only once.
-This number helps determine whether the proposed targeting segment can support the planned campaign budget.
+## Introduction
 
-With access to the complete viewing logs, the qualifying viewers could be counted directly.
-Repeatedly scanning a large user-level table for every genre combination, however, incurs substantial query costs.
-One alternative is to approximate the joint distribution of genre indicators once and compute UU from that distribution.
+Suppose you are a data scientist at a fictional video-on-demand service.
 
-Latent class analysis (LCA) is commonly used to identify and interpret latent subpopulations.
-Here, I instead use it to approximate the joint distribution of multivariate binary data.
-Once the model is fitted, its parameters alone are sufficient to compute UU for genre combinations without rescanning the user-level data.
+A media planner asks, "How many unique users (UU) watched either K-Drama or Romance in the past 90 days?"
+UU is an important metric because it helps determine whether a proposed targeting segment is large enough to support the planned advertising campaign.
+Because questions like this come up frequently, we want to answer them quickly and accurately without running an expensive query each time.
+
+If all viewing logs are available, we can calculate UU by counting each qualifying viewer once.
+Scanning a large user-level dataset for every genre combination, however, can be expensive.
+One way to avoid these repeated scans is to approximate the joint distribution of genre indicators in advance and calculate UU from that distribution.
+
+How might we model this situation?
+
+## Latent Class Analysis
+
+I use latent class analysis (LCA) for this approximation.
+LCA is commonly used to identify and interpret latent subpopulations, but here I use it to approximate the joint distribution of multivariate binary data.
+Once the model has been fitted, its parameters are all we need to calculate UU for different genre combinations.
 
 As an example, consider a panel of $n = 50{,}000$ viewers.
-Each viewer has $J = 16$ binary indicators for whether they watched each genre, and a viewer may watch multiple genres.
+For each viewer, we observe $J = 16$ binary indicators showing whether they watched each genre; viewers may have watched more than one genre.
 The 16 genres yield $2^{16} - 1$ nonempty combinations in principle.
-For practical purposes, I limit the accuracy evaluation to combinations of up to four genres.
+For this example, I evaluate approximation accuracy for combinations of up to four genres, which covers a practical range of queries.
 
 For a genre set $S$ and a known population size $M$, UU is
 
@@ -38,7 +46,7 @@ $$
   \operatorname{UU}(S) = M \cdot P\!\left( \bigcup_{j \in S}\{X_j = 1\} \right)
 $$
 
-Below, I derive this union probability in closed form from the fitted LCA and evaluate its approximation error.
+Below, I show how to calculate this union probability directly from the fitted LCA and then evaluate the approximation error.
 
 ## Synthetic data generation
 
@@ -54,7 +62,7 @@ $$
   \sigma(x) = \frac{1}{1 + e^{-x}}
 $$
 
-Factor 1 primarily drives crime and documentary viewing, Factor 2 romance, and Factor 3 anime, science fiction, fantasy, and horror.
+Factor 1 affects crime and documentary viewing, Factor 2 romance, and Factor 3 anime, science fiction, fantasy, and horror.
 Factor 4 represents overall viewing volume and loads weakly on every genre.
 Heavy viewers tend to watch a broader range of genres, creating positive correlations across the panel.
 The model nevertheless generates binary genre indicators, not viewing time itself.
@@ -79,8 +87,8 @@ The model nevertheless generates binary genre indicators, not viewing time itsel
   | Sports Doc      |                    0.6 |                    0.0 |                    0.0 |                   0.5 |      -1.55 |                             0.20 |
 
 The data-generating process is a continuous factor model rather than a finite mixture.
-The Bernoulli mixture fitted below is therefore misspecified by construction.
-This reflects the realistic setting in which observed data are unlikely to follow any particular finite mixture exactly.
+The Bernoulli mixture fitted below therefore does not exactly match the process that generated the data.
+This reflects a realistic setting: observed data are unlikely to follow any particular finite mixture exactly.
 
 I calibrated each $\alpha_j$ by simulation so that the share of viewers watching each genre ranges from 12% to 60%.
 The training and validation sets each contain 50,000 viewers.
@@ -159,7 +167,7 @@ set.seed(2027)
 X_valid <- gen_viewers(50000, genre_design)
 ```
 
-The training data show clusters of correlated genres driven by the same latent factors.
+The training data show clusters of correlated genres that are influenced by the same latent factors.
 
 ```{r}
 #| label: fig-genre-correlation
@@ -188,7 +196,7 @@ ggcorrplot::ggcorrplot(
 
 ## Overestimating the union under independence
 
-A simple approach uses the marginal viewer shares $\hat p_j$ from the training data and assumes that genre indicators are mutually independent.
+The simplest way to estimate UU is to use the marginal viewer shares $\hat p_j$ from the training data and assume that the genre indicators are mutually independent.
 Under this assumption, the share of users who watched at least one genre in $S$ is
 
 $$
@@ -196,7 +204,7 @@ $$
   = 1 - \prod_{j \in S}(1 - \hat p_j)
 $$
 
-Genre preferences are not independent, however.
+In the simulated data, however, genre preferences are not independent.
 Viewers who watch K-Drama are also more likely to watch Romance, so the overlap between the two audiences is larger than independence implies.
 The independence approximation consequently understates the overlap and overstates the share who watched at least one of the two genres.
 
@@ -234,12 +242,12 @@ indep_tbl |>
   gt::opt_table_font(font = gt::google_font("Lora"))
 ```
 
-For a population of 20 million, an error of only a few percentage points in the union probability can translate into an overestimate on the order of a million users.
+In a population of 20 million, an error of just a few percentage points in the union probability can lead to an overestimate of roughly a million users.
 
 ## Approximating the joint distribution with LCA
 
-The independence approximation makes union probabilities easy to calculate but cannot represent co-occurrence across genres.
-An LCA with $K$ classes---equivalently, a Bernoulli mixture model---retains the simple probability calculation while allowing for dependence at the population level.
+The independence approximation makes union probabilities easy to calculate, but it cannot capture co-occurrence across genres.
+An LCA with $K$ classes---equivalently, a Bernoulli mixture model---keeps the calculation simple while allowing genres to be dependent at the population level.
 
 $$
   P(\mathbf{x})
@@ -252,17 +260,16 @@ Here, $\pi_k$ is the mixing proportion for class $k$, and $\theta_{jk}$ is the p
 Genre indicators are conditionally independent within each class, but mixing multiple classes induces dependence in the population.
 I estimate the model with the EM algorithm implemented in {flexmix}.
 
-The model has $K(J + 1) - 1$ free parameters: more than the 16 parameters in the independence model, but far fewer than the $2^{16} - 1 = 65{,}535$ required by the saturated model.
-Setting $K = 1$ recovers the independence model, while larger values of $K$ can represent richer dependence structures.
+An LCA with $K$ classes has $K(J + 1) - 1$ parameters, far fewer than the $2^{16} - 1 = 65{,}535$ required by the saturated model.
+When $K = 1$, the model has the same 16 parameters as the independence model; larger values of $K$ use more parameters to capture richer dependence structures.
 
-I do not interpret the latent classes themselves.
-Instead, I use the mixture to approximate $P(\mathbf{x})$ and evaluate it by the accuracy of UU estimates across genre combinations.
-Label switching is immaterial because relabeling the classes leaves both the fitted distribution and the resulting UU estimates unchanged.
+I do not try to interpret the latent classes themselves.
+Instead, I use the mixture to approximate $P(\mathbf{x})$ and judge it by the accuracy of its UU estimates across genre combinations.
 
 ## Computing UU for arbitrary conditions
 
 Conditional on class $k$, the genre indicators are independent.
-Let $A$ be the set of genres required to be present and $B$ the set required to be absent.
+Let $A$ be the set of genres required to be present and $B$ the set required to be absent, with no genre belonging to both sets.
 Then
 
 $$
@@ -277,13 +284,12 @@ $$
   = 1 - \sum_{k=1}^K\pi_k\prod_{j \in S}(1 - \theta_{jk})
 $$
 
-This calculation has complexity $O(K|S|)$ and requires only the fitted parameters.
-The same model also handles intersections and exclusions, such as "watched Anime but not Horror," through the corresponding products of $\theta_{jk}$ and $1 - \theta_{jk}$.
+The same model can also handle intersections and exclusions, such as "watched Anime but not Horror," by using the corresponding products of $\theta_{jk}$ and $1 - \theta_{jk}$.
 
 ## Selecting the number of classes using validation data
 
 I compare $K \in \{1,2,3,4,6,8,12,16\}$.
-Every model is fitted exclusively on the 50,000-viewer training set.
+Each model is fitted using only the 50,000-viewer training set.
 The evaluation covers all 120 two-way, 560 three-way, and 1,820 four-way genre unions.
 For each query, I compare the estimated union probability with its empirical counterpart in the validation data.
 I exclude one-way queries because their marginal probabilities can be estimated directly from the training data.
@@ -379,7 +385,7 @@ selected_k <- 8
 
 Let $u_q$ denote the union probability observed in the validation data and $\hat u_{q,K}$ the estimate from the model with $K$ classes.
 I select $K$ using RMSE on the probability scale across all two-way, three-way, and four-way queries.
-Every combination receives equal weight, so query sizes with more possible combinations contribute more to the overall RMSE.
+Every combination receives equal weight, so query sizes with more combinations contribute more to the overall RMSE.
 With $Q$ total queries, the criterion is
 
 $$
@@ -418,18 +424,17 @@ ggplot(plot_data, aes(k, rmse, colour = series, group = series)) +
   theme(legend.position = "top")
 ```
 
-RMSE declines through $K = 8$ and improves only slightly thereafter.
-Balancing approximation accuracy against model complexity, I select $K = 8$.
+RMSE declines through $K = 8$, with only small improvements beyond that point.
+I therefore choose $K = 8$ as a balance between approximation accuracy and model complexity.
 
 ## Approximation accuracy on the test set
 
 After fixing $K$, I evaluate approximation accuracy on an independently generated test set of two million viewers.
 
-Even with synthetic data, an empirical union probability computed from a finite sample varies slightly from one draw to another.
-This is Monte Carlo error.
-Increasing the test set to two million viewers reduces this variation and brings the observed union probabilities close to their population values.
-The remaining discrepancies therefore reflect model approximation error more than random variation in the test data.
-The test set is used neither to fit the model nor to select $K$.
+Even with synthetic data, a union probability calculated from a finite sample varies slightly from one draw to another.
+Using two million test viewers reduces this variation and brings the observed union probabilities close to their population values.
+Most of the remaining error can therefore be attributed to the model approximation rather than random variation in the test data.
+The test set is not used to fit the model or select $K$.
 
 ```{r}
 #| label: test-evaluation
@@ -473,8 +478,8 @@ test_summary <- test_error |>
   )
 ```
 
-I compare the estimates from the selected LCA with union probabilities observed in the test data.
-Points closer to the 45-degree line indicate smaller approximation errors.
+The results below compare estimates from the selected LCA with the union probabilities observed in the test data.
+The estimates lie close to the 45-degree line, indicating small approximation errors.
 
 ```{r}
 #| label: fig-final-accuracy
@@ -531,14 +536,14 @@ test_summary |>
 
 ## Summary
 
-Audience sizes cannot generally be added when targeting conditions overlap.
-Modeling the joint distribution of genre indicators provides a way to account for that overlap while avoiding repeated scans of user-level data.
+When targeting conditions overlap, simply adding their individual audience sizes will double-count some users.
+Modeling the joint distribution of genre indicators accounts for this overlap without repeatedly scanning user-level data.
 
-In this example, I used latent class analysis not to interpret latent audience segments, but as a compact approximation to the joint distribution.
-The number of classes was selected using validation error on the downstream UU queries rather than an information criterion.
+In this example, I used latent class analysis not to discover and interpret audience segments, but to represent a complex joint distribution with a relatively small number of parameters.
+I therefore selected the number of classes using validation error on the UU queries of interest rather than an information criterion.
 
-Once fitted, the model can answer arbitrary genre-union queries from the estimated parameters alone.
-The practical value is therefore less about discovering latent classes and more about turning a large set of overlapping audience definitions into a reusable query layer.
+Once fitted, the model can answer arbitrary genre-union queries using only the estimated parameters.
+Its practical value lies in providing a reusable way to estimate the sizes of many overlapping audiences.
 
 ## Implementation
 
