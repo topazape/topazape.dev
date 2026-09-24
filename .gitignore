@@ -57,4 +57,5 @@ rsconnect/
 index_files/
 
 /posts/**/*.html
+/posts/**/*.md
 /posts/**/*_files/
