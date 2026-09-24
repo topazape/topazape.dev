@@ -8,6 +8,8 @@ format:
   gfm:
     variant: +yaml_metadata_block
     wrap: preserve
+crossref:
+  ref-hyperlink: false
 ---
 
 ```{r}
@@ -203,19 +205,18 @@ indep_tbl <- tibble(
   )
 
 indep_tbl |>
-  gt::gt() |>
-  gt::fmt_percent(
-    columns = everything(),
-    decimals = 1
-  ) |>
-  gt::cols_label(
-    k_drama_share = "K-Drama share",
-    romance_share = "Romance share",
-    independence_estimate = "Independence estimate",
-    observed_union = "Observed union",
-    relative_overestimate = "Relative overestimate"
-  ) |>
-  gt::opt_table_font(font = gt::google_font("Lora"))
+  mutate(across(everything(), \(x) sprintf("%.1f%%", 100 * x))) |>
+  knitr::kable(
+    format = "pipe",
+    col.names = c(
+      "K-Drama share",
+      "Romance share",
+      "Independence estimate",
+      "Observed union",
+      "Relative overestimate"
+    ),
+    align = rep("r", 5)
+  )
 ```
 
 母集団が 2,000 万人なら、和集合確率の数パーセントポイントの誤差が、UU では 100 万人単位の過大推定につながります。
@@ -469,26 +470,23 @@ ggplot(final_plot_data, aes(observed, estimate, colour = query_size)) +
 
 test_summary |>
   mutate(
-    n_way = paste0(n_way, "-way")
+    n_way = paste0(n_way, "-way"),
+    across(
+      c(rmse, mean_relative_error, p95_relative_error, max_relative_error),
+      \(x) sprintf("%.2f%%", 100 * x)
+    )
   ) |>
-  gt::gt() |>
-  gt::cols_label(
-    n_way = "Query size",
-    rmse = "RMSE",
-    mean_relative_error = "Mean relative error",
-    p95_relative_error = "95th percentile relative error",
-    max_relative_error = "Maximum relative error"
-  ) |>
-  gt::fmt_percent(
-    columns = c(
-      rmse,
-      mean_relative_error,
-      p95_relative_error,
-      max_relative_error
+  knitr::kable(
+    format = "pipe",
+    col.names = c(
+      "Query size",
+      "RMSE",
+      "Mean relative error",
+      "95th percentile relative error",
+      "Maximum relative error"
     ),
-    decimals = 2
-  ) |>
-  gt::opt_table_font(font = gt::google_font("Lora"))
+    align = c("l", rep("r", 4))
+  )
 ```
 
 ## まとめ

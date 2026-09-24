@@ -8,6 +8,8 @@ format:
   gfm:
     variant: +yaml_metadata_block
     wrap: preserve
+crossref:
+  ref-hyperlink: false
 ---
 
 ```{r}
@@ -410,19 +412,23 @@ simulation_summary |>
   ) |>
   arrange(metric, method) |>
   select(metric, method, truth, mean_estimate, bias_pp, sd_pp, rmse_pp) |>
-  gt::gt(groupname_col = "metric") |>
-  gt::fmt_percent(columns = c(truth, mean_estimate), decimals = 3) |>
-  gt::fmt_number(columns = c(bias_pp, sd_pp, rmse_pp), decimals = 3) |>
-  gt::cols_label(
-    method = "推定方法",
-    truth = "真値",
-    mean_estimate = "平均推定",
-    bias_pp = "Bias",
-    sd_pp = "SD",
-    rmse_pp = "RMSE"
+  mutate(
+    across(c(truth, mean_estimate), \(x) sprintf("%.3f%%", 100 * x)),
+    across(c(bias_pp, sd_pp, rmse_pp), \(x) sprintf("%.3f", x))
   ) |>
-  gt::cols_align(align = "right") |>
-  gt::opt_table_font(font = gt::google_font("Lora"))
+  knitr::kable(
+    format = "pipe",
+    col.names = c(
+      "指標",
+      "推定方法",
+      "真値",
+      "平均推定",
+      "Bias",
+      "SD",
+      "RMSE"
+    ),
+    align = c("l", "l", rep("r", 5))
+  )
 ```
 
 両方ヘビーでは、共通の視聴傾向が作る正の依存を無視するため、独立仮定の誤差が大きくなっています。一方、コピュラ融合の RMSE はパネル直接集計を下回りました。
