@@ -1,8 +1,8 @@
 ---
-title: "大規模な周辺分布と小規模パネルから媒体横断の利用構造を推定する"
+title: "大規模ログと小規模パネルでオーディエンス重複を推定する"
 emoji: "🔗"
 type: "tech"
-topics: ["audience-modeling", "data-fusion", "statistics"]
+topics: ["r", "統計", "データ分析", "確率", "マーケティング"]
 published: false
 format:
   gfm:

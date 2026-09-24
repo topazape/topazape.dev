@@ -1,8 +1,8 @@
 ---
-title: "潜在クラス分析によるジャンルの組み合わせ別ユニークユーザー数の推定"
+title: "潜在クラス分析でユニークユーザー数を推定する"
 emoji: "🧩"
 type: "tech"
-topics: ["audience-modeling", "mixture-models", "statistics"]
+topics: ["r", "統計", "数理統計", "データ分析", "シミュレーション"]
 published: false
 format:
   gfm:
