@@ -96,8 +96,9 @@ Final approximation accuracy is measured against an independent test set of 2,00
 
 ```{r}
 #| label: data-gen
-#| include: true
 #| cache: true
+#| code-fold: true
+#| code-summary: "Show data-generation code"
 
 genre_design <- tribble(
   ~genre            , ~serious , ~romance , ~fiction , ~volume , ~alpha ,
@@ -296,8 +297,9 @@ I exclude one-way queries because their marginal probabilities can be estimated 
 
 ```{r}
 #| label: fit-mixtures
-#| include: false
 #| cache: true
+#| code-fold: true
+#| code-summary: "Show model-fitting code"
 
 library(flexmix)
 
@@ -341,8 +343,9 @@ K_grid <- c(1, Ks)
 
 ```{r}
 #| label: validation-queries
-#| include: false
 #| cache: true
+#| code-fold: true
+#| code-summary: "Show validation code"
 
 queries <- map(2:4, \(n_way) {
   combn(seq_along(genres), n_way, simplify = FALSE)
@@ -438,8 +441,9 @@ The test set is not used to fit the model or select $K$.
 
 ```{r}
 #| label: test-evaluation
-#| include: false
 #| cache: true
+#| code-fold: true
+#| code-summary: "Show test-evaluation code"
 
 rm(X_valid)
 
