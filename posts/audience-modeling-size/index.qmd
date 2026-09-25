@@ -96,7 +96,7 @@ Final approximation accuracy is measured against an independent test set of 2,00
 
 ```{r}
 #| label: data-gen
-#| include: false
+#| include: true
 #| cache: true
 
 genre_design <- tribble(
