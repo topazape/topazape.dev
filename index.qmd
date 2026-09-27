@@ -2,6 +2,7 @@
 title: "Notes on Inference"
 
 listing:
+  id: posts
   contents: posts
   feed:
     type: full
@@ -15,3 +16,17 @@ listing:
 page-layout: full
 title-block-banner: true
 ---
+
+::: {#posts}
+:::
+
+<div id="r-bloggers-link" class="small text-muted mt-3">
+  <hr class="mb-2">
+  R community: <a href="https://www.r-bloggers.com/">R-bloggers</a>
+</div>
+
+<script>
+  const categories = document.querySelector(".quarto-listing-category");
+  const rBloggersLink = document.querySelector("#r-bloggers-link");
+  categories?.insertAdjacentElement("afterend", rBloggersLink);
+</script>
