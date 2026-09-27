@@ -5,7 +5,7 @@ description: >-
   Derive Fieller's confidence interval for Brand Lift risk ratios, compare its coverage with delta and bootstrap methods, and implement it in R and BigQuery.
 image: index_files/figure-html/fig-ci-comparison-1.png
 date: "2026-07-29"
-categories: ["brand-lift", "statistics"]
+categories: ["brand-lift", "statistics", "R"]
 ---
 
 ```{r}
@@ -98,8 +98,8 @@ $$
 This is a quadratic inequality $a\theta^2 - 2b\theta + c \leq 0$ with coefficients:
 
 $$
-  a = \hat{p}_0^2 - z^2 V_0, \quad b
-    = \hat{p}_1 \hat{p}_0, \quad c = \hat{p}_1^2 - z^2 V_1
+  a = \hat{p}_0^2 - z^2 V_0, \quad b = \hat{p}_1 \hat{p}_0,
+  \quad c = \hat{p}_1^2 - z^2 V_1
 $$
 
 When $a > 0$ and the discriminant $D = b^2 - ac$ is positive, the quadratic has two real roots and the CI is the closed interval between them:
@@ -154,8 +154,8 @@ Dropping it and substituting into the CI bounds:
 $$
   \frac{b \pm \sqrt{D}}{a}
   \approx \frac{\hat{p}_1 \hat{p}_0 \pm z\sqrt{\hat{p}_0^2 V_1 + \hat{p}_1^2 V_0}}{\hat{p}_0^2}
-                           = \widehat{RR}
-                             \pm \frac{z}{\hat{p}_0^2}\sqrt{\hat{p}_0^2 V_1 + \hat{p}_1^2 V_0}
+  = \widehat{RR}
+    \pm \frac{z}{\hat{p}_0^2}\sqrt{\hat{p}_0^2 V_1 + \hat{p}_1^2 V_0}
 $$
 
 Substituting $V_1 = \hat{p}_1(1 - \hat{p}_1)/n$ and $V_0 = \hat{p}_0(1 - \hat{p}_0)/n$ and simplifying:
@@ -186,8 +186,8 @@ $$
 Compute the plug-in variances:
 
 $$
-  V_1 = \frac{0.210 \times 0.790}{500} = 0.0003318, \quad V_0
-      = \frac{0.140 \times 0.860}{500} = 0.0002408
+  V_1 = \frac{0.210 \times 0.790}{500} = 0.0003318,
+  \quad V_0 = \frac{0.140 \times 0.860}{500} = 0.0002408
 $$
 
 With $z^2 = 1.96^2 = 3.8416$:
@@ -217,7 +217,8 @@ $$
 $$
 
 $$
-  \text{CI}_{\text{Fieller}}: \quad \left( \frac{0.029400 - 0.008040}{0.018675}, \; \frac{0.029400 + 0.008040}{0.018675} \right)
+  \text{CI}_{\text{Fieller}}:
+  \quad \left( \frac{0.029400 - 0.008040}{0.018675}, \; \frac{0.029400 + 0.008040}{0.018675} \right)
   = (1.144, \; 2.005)
 $$
 

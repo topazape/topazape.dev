@@ -7,7 +7,7 @@ image: index_files/figure-html/fig-gap-1.png
 draft: true
 draft-mode: unlinked
 date: "2026-10-28"
-categories: ["causal-inference", "quasi-experimental-design", "statistics"]
+categories: ["causal-inference", "quasi-experimental-design", "statistics", "R"]
 ---
 
 ```{r}

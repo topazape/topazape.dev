@@ -368,8 +368,8 @@ pooling |>
 ```
 
 $$
-  \sum w_k = 141.58, \quad \log(\widehat{OR})_{\text{pooled}}
-           = \frac{37.3433}{141.58} = 0.2638
+  \sum w_k = 141.58,
+  \quad \log(\widehat{OR})_{\text{pooled}} = \frac{37.3433}{141.58} = 0.2638
 $$
 
 $$
@@ -377,8 +377,8 @@ $$
 $$
 
 $$
-  \text{95\% CI for } \log(OR): \quad 0.2638
-  \pm 1.96 \times 0.0840 = (0.0990, \; 0.4285)
+  \text{95\% CI for } \log(OR):
+  \quad 0.2638 \pm 1.96 \times 0.0840 = (0.0990, \; 0.4285)
 $$
 
 $$

@@ -4,7 +4,8 @@ title: "Notes on Inference"
 listing:
   contents: posts
   feed:
-   type: partial
+    type: full
+    categories: [R]
   sort: "date desc"
   type: grid
   categories: true

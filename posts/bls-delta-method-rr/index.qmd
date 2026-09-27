@@ -5,7 +5,7 @@ description: >-
   Derive a confidence interval for Brand Lift risk ratios with the log-scale delta method, including worked examples and production-ready R and BigQuery SQL.
 image: index_files/figure-html/fig-ci-comparison-1.png
 date: "2026-07-01"
-categories: ["brand-lift", "statistics"]
+categories: ["brand-lift", "statistics", "R"]
 ---
 
 Every Brand Lift Study (BLS) is a 2×2 table: exposed vs. control, positive response vs. not.
@@ -49,8 +49,8 @@ Each $\hat{p}$ is a sample proportion from a binomial distribution.
 Their variances are:
 
 $$
-  \text{Var}(\hat{p}_1) = \frac{p_1(1 - p_1)}{n_1}, \quad \text{Var}(\hat{p}_0)
-                        = \frac{p_0(1 - p_0)}{n_0}
+  \text{Var}(\hat{p}_1) = \frac{p_1(1 - p_1)}{n_1},
+  \quad \text{Var}(\hat{p}_0) = \frac{p_0(1 - p_0)}{n_0}
 $$
 
 The exposed and control groups are independently randomized, so $\hat{p}_1$ and $\hat{p}_0$ are independent.
@@ -78,7 +78,7 @@ The first-order Taylor expansion around $(p_1, p_0)$ is:
 $$
   g(\hat{p}_1, \hat{p}_0)
   \approx g(p_1, p_0) + \frac{\partial g}{\partial p_1}(\hat{p}_1 - p_1)
-                                  + \frac{\partial g}{\partial p_0}(\hat{p}_0 - p_0)
+          + \frac{\partial g}{\partial p_0}(\hat{p}_0 - p_0)
 $$
 
 The right-hand side, minus the constant $g(p_1, p_0)$, is a linear combination $aU + bV$ where $a = \frac{\partial g}{\partial p_1}$, $b = \frac{\partial g}{\partial p_0}$, $U = \hat{p}_1 - p_1$, $V = \hat{p}_0 - p_0$.
@@ -94,8 +94,8 @@ which gives:
 $$
   \text{Var}(\widehat{RR})
   \approx \left( \frac{\partial g}{\partial p_1} \right)^2 \text{Var}(\hat{p}_1)
-                                   + \left( \frac{\partial g}{\partial p_0} \right)^2 \text{Var}(\hat{p}_0)
-                                   + 2 \frac{\partial g}{\partial p_1} \frac{\partial g}{\partial p_0} \text{Cov}(\hat{p}_1, \hat{p}_0)
+          + \left( \frac{\partial g}{\partial p_0} \right)^2 \text{Var}(\hat{p}_0)
+          + 2 \frac{\partial g}{\partial p_1} \frac{\partial g}{\partial p_0} \text{Cov}(\hat{p}_1, \hat{p}_0)
 $$
 
 Since $\hat{p}_1$ and $\hat{p}_0$ are independent, $\text{Cov}(\hat{p}_1, \hat{p}_0) = 0$ and the cross term vanishes:
@@ -103,24 +103,23 @@ Since $\hat{p}_1$ and $\hat{p}_0$ are independent, $\text{Cov}(\hat{p}_1, \hat{p
 $$
   \text{Var}(\widehat{RR})
   \approx \left( \frac{\partial g}{\partial p_1} \right)^2 \text{Var}(\hat{p}_1)
-                                   + \left( \frac{\partial g}{\partial p_0} \right)^2 \text{Var}(\hat{p}_0)
+          + \left( \frac{\partial g}{\partial p_0} \right)^2 \text{Var}(\hat{p}_0)
 $$
 
 The partial derivatives are:
 
 $$
-  \frac{\partial}{\partial p_1}\left( \frac{p_1}{p_0} \right)
-  = \frac{1}{p_0}, \quad \frac{\partial}{\partial p_0}\left( \frac{p_1}{p_0} \right)
-                                                              = -\frac{p_1}{p_0^2}
+  \frac{\partial}{\partial p_1}\left( \frac{p_1}{p_0} \right) = \frac{1}{p_0},
+  \quad \frac{\partial}{\partial p_0}\left( \frac{p_1}{p_0} \right)
+  = -\frac{p_1}{p_0^2}
 $$
 
 Substituting:
 
 $$
-  \text{Var}(\widehat{RR}) \approx \frac{1}{p_0^2}
-                                   \cdot \frac{p_1(1 - p_1)}{n_1}
-                                   + \frac{p_1^2}{p_0^4}
-                                   \cdot \frac{p_0(1 - p_0)}{n_0}
+  \text{Var}(\widehat{RR})
+  \approx \frac{1}{p_0^2} \cdot \frac{p_1(1 - p_1)}{n_1}
+          + \frac{p_1^2}{p_0^4} \cdot \frac{p_0(1 - p_0)}{n_0}
 $$
 
 which simplifies to:
@@ -249,8 +248,8 @@ Suppose a BLS campaign yields:
 Then:
 
 $$
-  \hat{p}_1 = 0.210, \quad \hat{p}_0 = 0.140, \quad \widehat{RR}
-            = \frac{0.210}{0.140} = 1.500
+  \hat{p}_1 = 0.210, \quad \hat{p}_0 = 0.140,
+  \quad \widehat{RR} = \frac{0.210}{0.140} = 1.500
 $$
 
 The platform would report a "relative lift" of 50%.
@@ -267,13 +266,13 @@ $$
 $$
 
 $$
-  \text{95\% CI for } \log(RR): \quad 0.40546
-  \pm 1.96 \times 0.14075 = (0.12959, \; 0.68133)
+  \text{95\% CI for } \log(RR):
+  \quad 0.40546 \pm 1.96 \times 0.14075 = (0.12959, \; 0.68133)
 $$
 
 $$
-  \text{95\% CI for } RR: \quad (e^{0.12959}, \; e^{0.68133})
-  = (1.138, \; 1.977)
+  \text{95\% CI for } RR:
+  \quad (e^{0.12959}, \; e^{0.68133}) = (1.138, \; 1.977)
 $$
 
 The interval excludes $1$, so the lift is statistically significant at the 5% level.
@@ -283,8 +282,9 @@ The "relative lift" of 50% has a 95% CI of approximately (13.8%, 97.7%).
 
 $$
   \text{Var}(\widehat{RR})
-  = 1.500^2 \times \left[ \frac{1 - 0.210}{500 \times 0.210} + \frac{1 - 0.140}{500 \times 0.140} \right]
-                           = 2.25 \times (0.007524 + 0.012286) = 0.044573
+  = 1.500^2
+    \times \left[ \frac{1 - 0.210}{500 \times 0.210} + \frac{1 - 0.140}{500 \times 0.140} \right]
+  = 2.25 \times (0.007524 + 0.012286) = 0.044573
 $$
 
 $$
@@ -292,8 +292,8 @@ $$
 $$
 
 $$
-  \text{95\% CI}_{naive}: \quad 1.500
-  \pm 1.96 \times 0.21112 = (1.086, \; 1.914)
+  \text{95\% CI}_{naive}:
+  \quad 1.500 \pm 1.96 \times 0.21112 = (1.086, \; 1.914)
 $$
 
 Both intervals exclude $1$, but they differ in shape.
