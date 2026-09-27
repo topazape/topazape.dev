@@ -6,7 +6,7 @@ description: >-
   Validate delta-method confidence intervals for Brand Lift risk ratios by simulation and bootstrap, then derive sample sizes for a target power.
 image: index_files/figure-html/fig-coverage-1.png
 date: "2026-07-15"
-categories: ["brand-lift", "statistics"]
+categories: ["brand-lift", "statistics", "R"]
 ---
 
 ```{r}
@@ -329,8 +329,8 @@ Then $p_1 = 0.12$, $z_{0.975} = 1.96$, $z_{0.80} = 0.842$, and:
 $$
   n_{\min}
   = \left\lceil \frac{(1.96 + 0.842)^2}{[\log(1.20)]^2}\left[ \frac{1 - 0.12}{0.12} + \frac{1 - 0.10}{0.10} \right] \right\rceil
-           = \left\lceil \frac{7.849}{0.03324} \times 16.333 \right\rceil
-           = \left\lceil 236.1 \times 16.333 \right\rceil = 3{,}857
+  = \left\lceil \frac{7.849}{0.03324} \times 16.333 \right\rceil
+  = \left\lceil 236.1 \times 16.333 \right\rceil = 3{,}857
 $$
 
 At 80% power, the study needs approximately 3,900 respondents per group to detect a 20% relative lift.

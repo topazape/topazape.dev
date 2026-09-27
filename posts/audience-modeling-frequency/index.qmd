@@ -5,7 +5,7 @@ description: >-
   Model heterogeneous ad exposure counts with a finite mixture of negative binomial distributions and derive reach curves from the fitted parameters.
 image: index_files/figure-html/fig-freq-dist-1.png
 date: "2026-09-09"
-categories: ["audience-modeling", "reach-frequency", "statistics"]
+categories: ["audience-modeling", "reach-frequency", "statistics", "R"]
 ---
 
 ```{r}
@@ -44,16 +44,17 @@ The Gamma is parameterized so that $E[\lambda_i] = \mu$ and $\text{Var}(\lambda_
 Marginalizing over $\lambda_i$:
 
 $$
-  P(X = x) = \int_0^{\infty} \frac{e^{-\lambda}\lambda^x}{x!}
-             \cdot \frac{(\theta/\mu)^{\theta}}{\Gamma(\theta)} \lambda^{\theta-1} e^{-\theta\lambda/\mu} \, d\lambda
+  P(X = x)
+  = \int_0^{\infty} \frac{e^{-\lambda}\lambda^x}{x!}
+    \cdot \frac{(\theta/\mu)^{\theta}}{\Gamma(\theta)} \lambda^{\theta-1} e^{-\theta\lambda/\mu} \, d\lambda
 $$
 
 The integral evaluates to the negative binomial probability mass function:
 
 $$
   P(X = x)
-  = \binom{x + \theta - 1}{x} \left( \frac{\theta}{\theta + \mu} \right)^{\!\theta} \left( \frac{\mu}{\theta + \mu} \right)^{\!x}, \quad x
-           = 0, 1, 2, \dots
+  = \binom{x + \theta - 1}{x} \left( \frac{\theta}{\theta + \mu} \right)^{\!\theta} \left( \frac{\mu}{\theta + \mu} \right)^{\!x},
+  \quad x = 0, 1, 2, \dots
 $$
 
 The moments are:

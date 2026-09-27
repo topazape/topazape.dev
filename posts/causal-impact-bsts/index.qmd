@@ -7,7 +7,7 @@ image: index_files/figure-html/fig-impact-1.png
 draft: true
 draft-mode: unlinked
 date: "2026-11-11"
-categories: ["causal-inference", "quasi-experimental-design", "statistics"]
+categories: ["causal-inference", "quasi-experimental-design", "statistics", "R"]
 ---
 
 ```{r}

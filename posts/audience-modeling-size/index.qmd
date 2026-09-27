@@ -5,7 +5,7 @@ description: >-
   Use latent class analysis to approximate viewing patterns and estimate unique audience sizes for any combination of genres.
 image: index_files/figure-html/fig-genre-correlation-1.png
 date: "2026-09-16"
-categories: ["audience-modeling", "mixture-models", "statistics"]
+categories: ["audience-modeling", "mixture-models", "statistics", "R"]
 ---
 
 ```{r}

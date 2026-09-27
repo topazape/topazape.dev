@@ -7,7 +7,7 @@ image: index_files/figure-html/fig-estimates-1.png
 draft: true
 draft-mode: unlinked
 date: "2026-11-18"
-categories: ["causal-inference", "experimental-design", "statistics"]
+categories: ["causal-inference", "experimental-design", "statistics", "R"]
 ---
 
 ```{r}
