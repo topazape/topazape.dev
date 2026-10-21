@@ -58,13 +58,6 @@ dependencies = [
 ]
 
 [[packages]]
-name = "Formula"
-version = "1.2-6"
-source = { repository = "https://packagemanager.posit.co/cran/latest" }
-force_source = false
-dependencies = []
-
-[[packages]]
 name = "MASS"
 version = "7.3-65"
 source = { builtin = true }
@@ -489,17 +482,6 @@ dependencies = [
     "pcaPP",
     "pspline",
     "numDeriv",
-]
-
-[[packages]]
-name = "countreg"
-version = "0.3-0"
-source = { repository = "https://zeileis.r-universe.dev/", git = "https://codeberg.org/zeileis/countreg", sha = "a9bfc37dff5e53944f0747ec5177fff746a07d44" }
-force_source = false
-dependencies = [
-    "MASS",
-    { name = "distributions3", requirement = "(>= 0.2.1)" },
-    "Formula",
 ]
 
 [[packages]]
