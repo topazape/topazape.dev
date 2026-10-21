@@ -4,8 +4,6 @@ title: >-
 description: >-
   Design a synthetic panel with known ground truth and use it to show why a simple pre-post comparison can mistake time variation for a causal effect.
 image: index_files/figure-html/fig-ios-series-1.png
-draft: true
-draft-mode: unlinked
 date: "2026-10-21"
 categories: ["causal-inference", "quasi-experimental-design", "statistics", "R"]
 ---
