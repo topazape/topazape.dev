@@ -4,8 +4,6 @@ title: >-
 description: >-
   Build a synthetic control from data-driven donor weights, evaluate its pre-treatment fit, and quantify uncertainty with in-space placebo inference.
 image: index_files/figure-html/fig-placebo-1.png
-draft: true
-draft-mode: unlinked
 date: "2026-11-04"
 categories: ["causal-inference", "quasi-experimental-design", "statistics", "R"]
 ---
