@@ -4,8 +4,6 @@ title: >-
 description: >-
   Estimate causal effects with Bayesian structural time series, examine how CausalImpact constructs the counterfactual, and compare its assumptions with DiD and synthetic control.
 image: index_files/figure-html/fig-impact-1.png
-draft: true
-draft-mode: unlinked
 date: "2026-11-11"
 categories: ["causal-inference", "quasi-experimental-design", "statistics", "R"]
 ---
